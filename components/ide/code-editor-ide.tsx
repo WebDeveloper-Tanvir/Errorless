@@ -8,7 +8,7 @@ import { X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
-const Editor = dynamic(() => import("@monaco-editor/react").then((mod) => mod.default), {
+const Editor = dynamic(() => import("@monaco-editor/react"), {
   ssr: false,
   loading: () => <div className="flex items-center justify-center h-full text-muted-foreground">Loading editor...</div>,
 })
