@@ -4,6 +4,7 @@ import { useState, useCallback } from "react"
 import { FileExplorer, type FileNode } from "./file-explorer"
 import { CodeEditorIDE } from "./code-editor-ide"
 import { Terminal } from "./terminal"
+import { CommandPalette } from "./command-palette"
 import { FileSystem } from "@/lib/file-system"
 import { ErrorlessChatbotPanel } from "./errorless-chatbot-panel"
 
@@ -12,6 +13,7 @@ export function IDEContainer() {
   const [files, setFiles] = useState<FileNode[]>(fileSystem.getFiles())
   const [selectedFile, setSelectedFile] = useState<FileNode | null>(null)
   const [openFiles, setOpenFiles] = useState<FileNode[]>([])
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
 
   const handleSelectFile = useCallback(
     (file: FileNode) => {
@@ -90,6 +92,8 @@ export function IDEContainer() {
 
   return (
     <div className="flex h-screen bg-background">
+      <CommandPalette isOpen={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
+      
       {/* File Explorer */}
       <div className="w-64 border-r border-border overflow-hidden">
         <FileExplorer
