@@ -1,8 +1,8 @@
 import type React from "react"
 import type { Metadata } from "next"
-import { ClerkProvider } from "@clerk/nextjs"
 import { Geist, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
+import { ClerkClientProvider } from "@/components/clerk-provider"
 import { ConvexClientProvider } from "@/components/convex-provider"
 import "./globals.css"
 
@@ -108,12 +108,12 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
       </head>
       <body className={`font-sans antialiased`}>
-        <ClerkProvider>
+        <ClerkClientProvider>
           <ConvexClientProvider>
             {children}
             <Analytics />
           </ConvexClientProvider>
-        </ClerkProvider>
+        </ClerkClientProvider>
       </body>
     </html>
   )
