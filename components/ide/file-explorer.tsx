@@ -30,6 +30,7 @@ export function FileExplorer({
   onDeleteFile,
   selectedFileId,
 }: FileExplorerProps) {
+  // Initialize with all folders collapsed by default
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
   const [newItemName, setNewItemName] = useState("")
   const [creatingIn, setCreatingIn] = useState<string | null>(null)
