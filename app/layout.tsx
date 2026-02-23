@@ -1,5 +1,5 @@
 import type React from "react"
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { ClerkClientProvider } from "@/components/clerk-provider"
@@ -8,6 +8,13 @@ import "./globals.css"
 
 const _geist = Geist({ subsets: ["latin"] })
 const _geistMono = Geist_Mono({ subsets: ["latin"] })
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  themeColor: "#0a0a0b",
+}
 
 export const metadata: Metadata = {
   title: "Errorless - AI-Powered Code Error Solver | Real-Time Debugging",
@@ -63,11 +70,6 @@ export const metadata: Metadata = {
   },
   alternates: {
     canonical: "https://errorless.dev",
-  },
-  viewport: {
-    width: "device-width",
-    initialScale: 1,
-    maximumScale: 5,
   },
 }
 
