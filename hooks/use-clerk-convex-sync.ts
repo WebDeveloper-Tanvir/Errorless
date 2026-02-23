@@ -1,22 +1,28 @@
+"use client"
+
 import { useEffect } from "react"
 import { useUser } from "@clerk/nextjs"
-import { useMutation } from "convex/react"
-import { api } from "@/convex/_generated/api"
 
+// This hook syncs Clerk user data to Convex database
+// It will be fully functional after Convex deployment
 export function useClerkConvexSync() {
   const { user, isLoaded } = useUser()
-  const createOrUpdateUser = useMutation(api.functions.createOrUpdateUser)
 
   useEffect(() => {
-    if (isLoaded && user) {
-      createOrUpdateUser({
+    if (!isLoaded || !user) return
+
+    // Store user info in session storage temporarily
+    // This will be replaced with Convex mutation after deployment
+    try {
+      const userData = {
         clerkId: user.id,
         email: user.emailAddresses[0]?.emailAddress || "",
         name: user.firstName || user.username || "",
         profileImage: user.imageUrl,
-      }).catch((error) => {
-        console.error("[v0] Error syncing Clerk user to Convex:", error)
-      })
+      }
+      sessionStorage.setItem("convex_user_sync", JSON.stringify(userData))
+    } catch (error) {
+      console.error("[v0] Error storing user data:", error)
     }
-  }, [isLoaded, user, createOrUpdateUser])
+  }, [isLoaded, user])
 }
