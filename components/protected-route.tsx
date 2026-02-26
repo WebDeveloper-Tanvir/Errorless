@@ -1,45 +1,25 @@
 "use client"
 
 import type React from "react"
-
-import { useEffect, useState } from "react"
+import { useAuth } from "@clerk/nextjs"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
+import { useEffect } from "react"
 
 interface ProtectedRouteProps {
   children: React.ReactNode
 }
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
+  const { isLoaded, isSignedIn } = useAuth()
   const router = useRouter()
-  const [isLoading, setIsLoading] = useState(true)
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
 
   useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const supabase = createClient()
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
-
-        if (!user) {
-          router.push("/auth/login")
-          return
-        }
-
-        setIsAuthenticated(true)
-      } catch (error) {
-        router.push("/auth/login")
-      } finally {
-        setIsLoading(false)
-      }
+    if (isLoaded && !isSignedIn) {
+      router.push("/sign-in")
     }
+  }, [isLoaded, isSignedIn, router])
 
-    checkAuth()
-  }, [router])
-
-  if (isLoading) {
+  if (!isLoaded) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <p className="text-muted-foreground">Loading...</p>
@@ -47,7 +27,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     )
   }
 
-  if (!isAuthenticated) {
+  if (!isSignedIn) {
     return null
   }
 

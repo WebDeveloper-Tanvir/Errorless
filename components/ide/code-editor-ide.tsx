@@ -2,15 +2,17 @@
 
 import type React from "react"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import dynamic from "next/dynamic"
 import { X } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
 
-const Editor = dynamic(() => import("@monaco-editor/react"), {
+const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
   ssr: false,
-  loading: () => <div className="flex items-center justify-center h-full text-muted-foreground">Loading editor...</div>,
+  loading: () => (
+    <div className="flex items-center justify-center h-full text-muted-foreground bg-[#1e1e1e]">
+      Loading editor...
+    </div>
+  ),
 })
 
 interface CodeEditorIDEProps {
@@ -28,8 +30,8 @@ const languageExtensions: Record<string, string> = {
   py: "python",
   js: "javascript",
   ts: "typescript",
-  jsx: "jsx",
-  tsx: "tsx",
+  jsx: "javascript",
+  tsx: "typescript",
   java: "java",
   cpp: "cpp",
   c: "c",
@@ -47,37 +49,23 @@ const languageExtensions: Record<string, string> = {
   md: "markdown",
 }
 
+function getLanguageFromFilename(filename: string, fallback = "python"): string {
+  const ext = filename.split(".").pop()?.toLowerCase()
+  return (ext && languageExtensions[ext]) || fallback
+}
+
 export function CodeEditorIDE({ file, onContentChange, onClose }: CodeEditorIDEProps) {
-  const [content, setContent] = useState(file?.content || "")
-  const [language, setLanguage] = useState(file?.language || "python")
-  const [theme, setTheme] = useState("vs-dark")
   const [fontSize, setFontSize] = useState(14)
+  const [theme, setTheme] = useState("vs-dark")
 
+  // Detect system theme — always use vs-dark variant for brand consistency
   useEffect(() => {
-    setContent(file?.content || "")
-    if (file?.name) {
-      const ext = file.name.split(".").pop()?.toLowerCase()
-      if (ext && languageExtensions[ext]) {
-        setLanguage(languageExtensions[ext])
-      }
-    }
-  }, [file])
-
-  // Detect system theme preference
-  useEffect(() => {
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)")
-    const handleThemeChange = (e: MediaQueryListEvent | MediaQueryList) => {
-      setTheme(e.matches ? "vs-dark" : "vs")
-    }
-    handleThemeChange(mediaQuery)
-    mediaQuery.addEventListener("change", handleThemeChange)
-    return () => mediaQuery.removeEventListener("change", handleThemeChange)
+    setTheme("vs-dark")
   }, [])
 
   const handleEditorChange = useCallback(
     (value: string | undefined) => {
       if (value !== undefined) {
-        setContent(value)
         onContentChange(value)
       }
     },
@@ -90,54 +78,67 @@ export function CodeEditorIDE({ file, onContentChange, onClose }: CodeEditorIDEP
 
   if (!file) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-background text-muted-foreground">
+      <div className="flex-1 flex items-center justify-center bg-[#1e1e1e] text-muted-foreground">
         <p>Select a file to start editing</p>
       </div>
     )
   }
 
+  const language = getLanguageFromFilename(file.name, file.language || "python")
+
   return (
-    <div className="flex-1 flex flex-col bg-background">
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-card gap-4">
+    <div className="flex-1 flex flex-col bg-background h-full">
+      <div className="flex items-center justify-between px-4 py-1.5 shrink-0"
+        style={{ borderBottom: "1px solid rgba(0,201,167,0.1)", background: "rgba(2,8,5,0.8)" }}>
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">{file.name}</span>
-          <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">{language}</span>
+          <span className="text-xs font-medium" style={{ color: "rgba(200,230,220,0.6)" }}>{file.name}</span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded font-mono font-semibold tracking-widest uppercase"
+            style={{ background: "rgba(0,201,167,0.08)", color: "#00c9a7", border: "1px solid rgba(0,201,167,0.15)" }}>
+            {language}
+          </span>
         </div>
-        <div className="flex items-center gap-2 ml-auto">
-          <div className="flex items-center gap-1 text-xs">
-            <button
-              onClick={() => handleFontSizeChange(-2)}
-              className="px-2 py-1 hover:bg-muted rounded"
-              title="Decrease font size"
-            >
-              −
-            </button>
-            <span className="w-8 text-center">{fontSize}px</span>
-            <button
-              onClick={() => handleFontSizeChange(2)}
-              className="px-2 py-1 hover:bg-muted rounded"
-              title="Increase font size"
-            >
-              +
-            </button>
+        <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5 text-xs">
+            <button onClick={() => handleFontSizeChange(-2)}
+              className="w-6 h-6 flex items-center justify-center rounded transition-all"
+              style={{ color: "rgba(200,230,220,0.4)" }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,201,167,0.1)"; (e.currentTarget as HTMLButtonElement).style.color = "#00c9a7" }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; (e.currentTarget as HTMLButtonElement).style.color = "rgba(200,230,220,0.4)" }}
+            >−</button>
+            <span className="w-8 text-center font-mono text-[10px]" style={{ color: "rgba(200,230,220,0.35)" }}>{fontSize}px</span>
+            <button onClick={() => handleFontSizeChange(2)}
+              className="w-6 h-6 flex items-center justify-center rounded transition-all"
+              style={{ color: "rgba(200,230,220,0.4)" }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,201,167,0.1)"; (e.currentTarget as HTMLButtonElement).style.color = "#00c9a7" }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; (e.currentTarget as HTMLButtonElement).style.color = "rgba(200,230,220,0.4)" }}
+            >+</button>
           </div>
-          <Button size="sm" variant="ghost" onClick={onClose}>
-            <X size={16} />
-          </Button>
+          <button onClick={onClose}
+            className="w-6 h-6 flex items-center justify-center rounded transition-all"
+            style={{ color: "rgba(200,230,220,0.35)" }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,77,109,0.12)"; (e.currentTarget as HTMLButtonElement).style.color = "#ff4d6d" }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; (e.currentTarget as HTMLButtonElement).style.color = "rgba(200,230,220,0.35)" }}
+          >
+            <X size={13} />
+          </button>
         </div>
       </div>
-      <div className="flex-1 overflow-hidden">
-        <Editor
+
+      {/* key={file.id} forces Monaco to fully remount when switching files,
+          ensuring the correct content is always displayed */}
+      <div className="flex-1 overflow-hidden min-h-0">
+        <MonacoEditor
+          key={file.id}
           height="100%"
-          defaultLanguage={language}
           language={language}
-          value={content}
+          value={file.content ?? ""}
           onChange={handleEditorChange}
           theme={theme}
           options={{
             minimap: { enabled: true },
             fontSize: fontSize,
-            fontFamily: "Fira Code, monospace",
+            fontFamily: "'Fira Code', 'Cascadia Code', monospace",
+            fontLigatures: true,
             lineNumbers: "on",
             scrollBeyondLastLine: false,
             automaticLayout: true,
@@ -150,13 +151,12 @@ export function CodeEditorIDE({ file, onContentChange, onClose }: CodeEditorIDEP
             renderLineHighlight: "line",
             roundedSelection: false,
             smoothScrolling: true,
-            showUnused: true,
-            bracketPairColorization: {
-              enabled: true,
-            },
+            bracketPairColorization: { enabled: true },
+            padding: { top: 12 },
           }}
         />
       </div>
     </div>
   )
 }
+

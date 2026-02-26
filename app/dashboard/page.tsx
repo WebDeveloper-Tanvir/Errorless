@@ -1,8 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useUser, useClerk } from "@clerk/nextjs"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
@@ -80,71 +79,11 @@ interface UserProfile {
 
 export default function DashboardPage() {
   const router = useRouter()
-  const [user, setUser] = useState<UserProfile | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [stats, setStats] = useState({ coursesEnrolled: 3, quizzesPassed: 5, hoursLearned: 15 })
+  const { user, isLoaded } = useUser()
+  const { signOut } = useClerk()
+  const stats = { coursesEnrolled: Object.keys(MOCK_PROGRESS).length, quizzesPassed: 5, hoursLearned: 15 }
 
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        const supabase = createClient()
-
-        // Get current user
-        const { data: userData, error: userError } = await supabase.auth.getUser()
-        if (userError || !userData.user) {
-          router.push("/auth/login")
-          return
-        }
-
-        // Try to fetch user profile from database
-        try {
-          const { data: profileData, error: profileError } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("id", userData.user.id)
-            .single()
-
-          if (!profileError && profileData) {
-            setUser(profileData)
-          } else {
-            setUser({
-              full_name: userData.user.user_metadata?.full_name || "User",
-              email: userData.user.email || "user@example.com",
-              avatar_url: null,
-            })
-          }
-        } catch {
-          setUser({
-            full_name: userData.user.user_metadata?.full_name || "User",
-            email: userData.user.email || "user@example.com",
-            avatar_url: null,
-          })
-        }
-
-        setStats({
-          coursesEnrolled: Object.keys(MOCK_PROGRESS).length,
-          quizzesPassed: 5,
-          hoursLearned: 15,
-        })
-      } catch (err) {
-        console.error("[v0] Dashboard error:", err)
-        setError(err instanceof Error ? err.message : "Failed to load dashboard")
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    fetchDashboardData()
-  }, [router])
-
-  const handleLogout = async () => {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    router.push("/")
-  }
-
-  if (isLoading) {
+  if (!isLoaded) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <p className="text-muted-foreground">Loading dashboard...</p>
@@ -152,13 +91,8 @@ export default function DashboardPage() {
     )
   }
 
-  if (error && !user) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen gap-4">
-        <p className="text-red-500">{error}</p>
-        <Button onClick={() => window.location.reload()}>Retry</Button>
-      </div>
-    )
+  const handleLogout = () => {
+    signOut({ redirectUrl: "/" })
   }
 
   return (
@@ -172,8 +106,8 @@ export default function DashboardPage() {
           </div>
           <div className="flex items-center gap-4">
             <div className="text-right hidden md:block">
-              <p className="font-medium">{user?.full_name || "User"}</p>
-              <p className="text-sm text-muted-foreground">{user?.email}</p>
+              <p className="font-medium">{user?.fullName || user?.firstName || "User"}</p>
+              <p className="text-sm text-muted-foreground">{user?.primaryEmailAddress?.emailAddress}</p>
             </div>
             <Button variant="outline" size="sm" onClick={handleLogout} className="bg-transparent">
               <LogOut className="h-4 w-4 mr-2" />
