@@ -8,6 +8,7 @@ export default defineSchema({
     name: v.optional(v.string()),
     profileImage: v.optional(v.string()),
     createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
   }).index("by_clerk_id", ["clerkId"]),
 
   projects: defineTable({

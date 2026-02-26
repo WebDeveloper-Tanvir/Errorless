@@ -1,5 +1,6 @@
 // Code Execution Engine - Simulates code execution for multiple languages
 export interface ExecutionResult {
+  problems: any
   success: boolean
   output: string
   error?: string
