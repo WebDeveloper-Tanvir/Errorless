@@ -1,113 +1,74 @@
 /**
- * Errorless — Email Classifier
+ * lib/emailClassifier.ts
  *
- * Determines user type from email address:
- *  "student"  → .edu / .ac.in / university domains  → shows IDE in navbar
- *  "personal" → gmail / yahoo / consumer domains    → shows Dev Mode in navbar
- *  "org"      → custom company/org domain           → shows Dev Mode in navbar
+ * Email → UserType classifier.
+ * Exports both getNavItem() and getSmartNavItem() (alias)
+ * so all existing imports work regardless of which name they use.
  */
 
 export type UserType = "student" | "personal" | "org"
 
-// ── All recognized educational TLD suffixes ────────────────────────────────
 const EDU_TLDS = [
-  // India
   ".edu.in", ".ac.in", ".k12.in", ".ernet.in",
-  // USA
   ".edu",
-  // UK
   ".ac.uk",
-  // Australia
-  ".edu.au", ".ac.nz",
-  // South/Southeast Asia
+  ".edu.au", ".ac.nz", ".ac.za",
   ".edu.sg", ".edu.pk", ".edu.bd", ".edu.np", ".edu.lk",
   ".edu.my", ".edu.ph", ".edu.vn", ".edu.hk",
-  // South Africa
-  ".ac.za",
-  // East Asia
   ".ac.jp", ".ac.kr", ".edu.cn", ".edu.tw",
-  // Latin America
   ".edu.br", ".edu.mx", ".edu.co", ".edu.ar", ".edu.pe", ".edu.cl",
-  // Middle East / Africa
-  ".edu.tr", ".edu.eg", ".ac.ir",
-  // Others
-  ".edu.pl", ".edu.gh", ".edu.ng",
-  // Generic
-  ".sch.id",
+  ".edu.tr", ".edu.eg", ".ac.ir", ".edu.gh", ".edu.ng",
+  ".edu.pl", ".sch.id",
 ]
 
-// ── Keywords in domain that strongly indicate educational institution ────────
-const EDU_DOMAIN_KEYWORDS = [
+const EDU_KEYWORDS = [
   "university", "college", "institute", "school", "academy",
-  "campus", "student", "alumni", "polytechnic", "seminary",
-  "univ.", ".uni.", "iit.", "nit.", "iiit.", "bits.", "vit.",
-  "gcet", "gtu.", "thapar", "manipal", "amity", "lpu.", "dtu.",
-  "mit.", "stanford.", "harvard.", "oxford.", "cambridge.",
+  "polytechnic", "campus", "seminary",
+  "iit.", "nit.", "iiit.", "bits.", "vit.", "dtu.", "thapar.",
+  "manipal.", "amity.", "lpu.", "gcet.", "gtu.", "mu.", "du.", "cu.",
+  "mit.", "stanford.", "harvard.", "oxford.", "cambridge.", "caltech.",
+  "berkeley.", "yale.", "princeton.",
 ]
 
-// ── Free / consumer email providers ────────────────────────────────────────
 const PERSONAL_DOMAINS = new Set([
-  // Google
   "gmail.com", "googlemail.com",
-  // Microsoft
   "outlook.com", "hotmail.com", "hotmail.in", "hotmail.co.uk",
-  "live.com", "live.in", "msn.com",
-  // Yahoo
-  "yahoo.com", "yahoo.in", "yahoo.co.in", "yahoo.co.uk",
-  "yahoo.fr", "yahoo.de",
-  // Apple
+  "live.com", "live.in", "msn.com", "windowslive.com",
+  "yahoo.com", "yahoo.in", "yahoo.co.in", "yahoo.co.uk", "yahoo.fr", "yahoo.de",
   "icloud.com", "me.com", "mac.com",
-  // Privacy / open source
   "protonmail.com", "proton.me", "tutanota.com", "fastmail.com",
-  // Indian
   "rediffmail.com",
-  // Others
-  "zoho.com", "yandex.com", "yandex.ru", "mail.com",
-  "email.com", "inbox.com", "aol.com", "gmx.com", "gmx.net",
-  "web.de", "libero.it", "virgilio.it",
+  "zoho.com", "yandex.com", "yandex.ru",
+  "mail.com", "email.com", "inbox.com", "aol.com", "gmx.com", "gmx.net",
 ])
 
-/**
- * Classify an email into student | personal | org
- */
 export function classifyEmail(email: string): UserType {
   if (!email?.includes("@")) return "personal"
-
   const lower = email.trim().toLowerCase()
   const domain = lower.split("@")[1]
-  if (!domain) return "personal"
+  if (!domain?.includes(".")) return "personal"
 
-  // 1. Educational TLD check (highest confidence)
   for (const tld of EDU_TLDS) {
     if (domain.endsWith(tld)) return "student"
   }
-
-  // 2. Bare .edu (e.g. mit.edu, stanford.edu)
   if (domain.endsWith(".edu")) return "student"
-
-  // 3. Educational keyword in the domain
-  for (const kw of EDU_DOMAIN_KEYWORDS) {
+  for (const kw of EDU_KEYWORDS) {
     if (domain.includes(kw)) return "student"
   }
-
-  // 4. Known consumer / personal domain
   if (PERSONAL_DOMAINS.has(domain)) return "personal"
-
-  // 5. Anything else = custom org domain
   return "org"
 }
 
-/**
- * What to show in the navbar for this user type
- */
-export function getSmartNavItem(userType: UserType): {
+export interface NavItem {
   href: string
   label: string
   icon: string
   color: string
   badge: string | null
   description: string
-} {
+}
+
+function buildNavItem(userType: UserType): NavItem {
   if (userType === "student") {
     return {
       href: "/ide",
@@ -128,14 +89,24 @@ export function getSmartNavItem(userType: UserType): {
   }
 }
 
-export function accountTypeLabel(userType: UserType): string {
-  if (userType === "student")  return "Student Account"
-  if (userType === "org")      return "Organisation Account"
+/** Primary export used in SmartNavbar */
+export const getNavItem = buildNavItem
+
+/** Alias — used in the login page (getSmartNavItem) */
+export const getSmartNavItem = buildNavItem
+
+export function getRedirectPath(userType: UserType): string {
+  return userType === "student" ? "/ide" : "/devmode"
+}
+
+export function accountLabel(userType: UserType): string {
+  if (userType === "student") return "Student Account"
+  if (userType === "org")     return "Organisation Account"
   return "Personal Account"
 }
 
 export function accountEmoji(userType: UserType): string {
-  if (userType === "student")  return "🎓"
-  if (userType === "org")      return "🏢"
+  if (userType === "student") return "🎓"
+  if (userType === "org")     return "🏢"
   return "👤"
 }

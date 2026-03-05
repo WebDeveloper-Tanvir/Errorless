@@ -1,11 +1,19 @@
+// middleware.ts  (root of project, alongside package.json)
+//
+// Clerk middleware — protects authenticated routes.
+// Public routes (login, signup, home, sso-callback) are accessible without auth.
+// Everything else requires a signed-in session.
+
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server"
 
 const isPublicRoute = createRouteMatcher([
   "/",
-  "/sign-in(.*)",
-  "/sign-up(.*)",
-  "/api(.*)",
-  "/demo(.*)",
+  "/login(.*)",
+  "/signup(.*)",
+  "/sso-callback(.*)",
+  "/pricing(.*)",
+  "/learn(.*)",
+  "/api/webhooks/(.*)",   // Clerk webhook must be public
 ])
 
 export default clerkMiddleware(async (auth, request) => {
@@ -16,6 +24,8 @@ export default clerkMiddleware(async (auth, request) => {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // Run on all routes except static files and Next.js internals
+    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    "/(api|trpc)(.*)",
   ],
 }
