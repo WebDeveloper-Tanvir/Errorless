@@ -1,66 +1,89 @@
-import { NextRequest, NextResponse } from "next/server"
+/**
+ * app/api/devmode/route.ts
+ *
+ * Next.js edge that proxies DevMode requests to your Python AI server.
+ * 
+ * Replace ERRORLESS_AI_URL with your Python server URL:
+ *   - Local dev:    http://localhost:8000
+ *   - Railway/Fly:  https://your-app.railway.app
+ *   - Render:       https://your-app.onrender.com
+ *
+ * POST /api/devmode
+ * Body: { mode, prompt?, code?, language, plan, context? }
+ */
 
-const GEMINI_KEY = process.env.GEMINI_API_KEY || ""
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`
+import { NextRequest, NextResponse } from "next/server"
+import { auth } from "@clerk/nextjs/server"
+
+const AI_URL = process.env.ERRORLESS_AI_URL ?? "http://localhost:8000"
+
+// Map DevMode UI modes → Python server endpoints
+const ENDPOINT: Record<string, string> = {
+  generate: "/generate",
+  analyze:  "/analyze",
+  optimize: "/optimize",
+  agent:    "/agent",        // emergent agent mode
+}
 
 export async function POST(req: NextRequest) {
+  // Auth check
+  const { userId } = await auth()
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  const body = await req.json()
+  const { mode = "generate", plan = "basic" } = body
+
+  // Plan gate: optimize & agent require premium
+  if ((mode === "optimize" || mode === "agent") && plan !== "premium") {
+    return NextResponse.json(
+      { error: "This feature requires a Premium plan.", upgrade: true },
+      { status: 403 }
+    )
+  }
+
+  const endpoint = ENDPOINT[mode]
+  if (!endpoint) {
+    return NextResponse.json({ error: `Unknown mode: ${mode}` }, { status: 400 })
+  }
+
   try {
-    const { prompt, language, plan } = await req.json()
-
-    if (!prompt || !language) {
-      return NextResponse.json({ error: "prompt and language are required" }, { status: 400 })
-    }
-
-    const systemPrompt = `You are an expert ${language} developer on Errorless Dev Mode.
-Generate clean, production-ready, well-commented ${language} code.
-
-Rules:
-- Write only the code — no explanations before or after unless it's a comment inside the code
-- Include helpful inline comments
-- Handle edge cases and errors properly
-- Follow best practices for ${language}
-- ${plan === "premium" ? "Include performance optimizations and thorough documentation" : "Write clean, readable code"}`
-
-    const userPrompt = `Write ${language} code for: ${prompt}
-
-Return ONLY the raw code with no markdown fences, no preamble, no explanation after.`
-
-    if (!GEMINI_KEY) {
-      return NextResponse.json({ code: getFallbackCode(language, prompt) })
-    }
-
-    const response = await fetch(GEMINI_URL, {
-      method: "POST",
+    const aiResp = await fetch(`${AI_URL}${endpoint}`, {
+      method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 4096 },
-      }),
+      body:    JSON.stringify({ ...body, userId }),
+      signal:  AbortSignal.timeout(90_000),  // 90s for agent mode
     })
 
-    if (!response.ok) {
-      return NextResponse.json({ code: getFallbackCode(language, prompt) })
-    }
+    const data = await aiResp.json()
+    return NextResponse.json(data, { status: aiResp.ok ? 200 : 502 })
 
-    const data = await response.json()
-    let code = data.candidates?.[0]?.content?.parts?.[0]?.text || ""
-
-    // Strip markdown fences if AI added them
-    code = code.replace(/^```[\w]*\n?/gm, "").replace(/```$/gm, "").trim()
-
-    return NextResponse.json({ code })
   } catch (err) {
-    console.error("[DevMode] generate error:", err)
-    return NextResponse.json({ error: "Generation failed" }, { status: 500 })
+    console.error("[DevMode API]", err)
+    return NextResponse.json({ error: "AI server unavailable" }, { status: 503 })
   }
 }
 
-function getFallbackCode(language: string, prompt: string): string {
-  const templates: Record<string, string> = {
-    python: `# ${prompt}\n# Add GEMINI_API_KEY to .env.local for real AI generation\n\ndef main():\n    # Your implementation here\n    print("Hello from Errorless Dev Mode!")\n\nif __name__ == "__main__":\n    main()`,
-    javascript: `// ${prompt}\n// Add GEMINI_API_KEY to .env.local for real AI generation\n\nfunction main() {\n  // Your implementation here\n  console.log("Hello from Errorless Dev Mode!");\n}\n\nmain();`,
-    typescript: `// ${prompt}\n// Add GEMINI_API_KEY to .env.local for real AI generation\n\nfunction main(): void {\n  // Your implementation here\n  console.log("Hello from Errorless Dev Mode!");\n}\n\nmain();`,
-  }
-  return templates[language] || `// ${prompt}\n// Add GEMINI_API_KEY to .env.local for real AI generation\n// Language: ${language}`
+// SSE streaming proxy for /generate?stream=true
+export async function GET(req: NextRequest) {
+  const { userId } = await auth()
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  const { searchParams } = req.nextUrl
+  const prompt   = searchParams.get("prompt") ?? ""
+  const language = searchParams.get("language") ?? "python"
+  const context  = searchParams.get("context") ?? ""
+
+  const aiResp = await fetch(`${AI_URL}/generate/stream`, {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify({ prompt, language, context, stream: true }),
+  })
+
+  return new NextResponse(aiResp.body, {
+    headers: {
+      "Content-Type":  "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection":    "keep-alive",
+    },
+  })
 }

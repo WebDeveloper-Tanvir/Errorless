@@ -13,6 +13,7 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://your-app.vercel.app"),
   title: "Errorless - AI-Powered Code Error Solver | Real-Time Debugging",
   description:
     "Errorless is an AI-powered code error solver that provides context-aware live error detection and fixes. Collaborate with your team, share fixes, and build better code faster.",
