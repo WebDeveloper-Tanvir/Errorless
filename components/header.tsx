@@ -3,11 +3,20 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Menu, X } from "lucide-react"
-import { SignInButton, SignUpButton, SignedIn, SignedOut, UserButton } from "@clerk/nextjs"
+import { SignInButton, SignUpButton, SignedIn, SignedOut, UserButton, useUser } from "@clerk/nextjs"
+import { classifyEmail } from "@/lib/emailClassifier"
 
 export function Header() {
   const [isOpen, setIsOpen]       = useState(false)
   const [scrolled, setScrolled]   = useState(false)
+
+  // ── Smart workspace routing based on email type ───────────────────────────
+  const { user, isSignedIn } = useUser()
+  const _email   = user?.primaryEmailAddress?.emailAddress ?? ""
+  const _type    = isSignedIn && _email ? classifyEmail(_email) : null
+  const _showDev = _type === "personal" || _type === "org"   // gmail/company → Dev Mode
+  const _showIDE = _type === "student"                        // .edu/.ac.in   → IDE
+  // ─────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24)
@@ -54,12 +63,50 @@ export function Header() {
               {label}
             </Link>
           ))}
-          <Link
-            href="/ide"
-            className="text-sm font-semibold text-[#00c9a7] hover:text-[#00e5c5] transition-colors tracking-wide"
-          >
-            IDE
-          </Link>
+          {/* ── Smart workspace link — changes based on logged-in email ── */}
+          {/* Not signed in → show IDE (default behaviour) */}
+          {!isSignedIn && (
+            <Link href="/ide" className="text-sm font-semibold text-[#00c9a7] hover:text-[#00e5c5] transition-colors tracking-wide">
+              IDE
+            </Link>
+          )}
+          {/* Personal / Org email (gmail, company) → Dev Mode */}
+          {_showDev && (
+            <Link
+              href="/devmode"
+              className="flex items-center gap-1.5 text-sm font-bold tracking-wide transition-all hover:-translate-y-px"
+              style={{
+                color: "#f59e0b",
+                background: "rgba(245,158,11,0.1)",
+                padding: "4px 12px",
+                borderRadius: "8px",
+                border: "1px solid rgba(245,158,11,0.25)",
+                textDecoration: "none",
+              }}
+            >
+              ⚙ Dev Mode
+              <span style={{ fontSize: "0.55rem", fontWeight: 800, background: "#f59e0b", color: "#04070e", padding: "1px 5px", borderRadius: "3px" }}>
+                NEW
+              </span>
+            </Link>
+          )}
+          {/* Student email (.edu / .ac.in) → IDE */}
+          {_showIDE && (
+            <Link
+              href="/ide"
+              className="flex items-center gap-1.5 text-sm font-bold tracking-wide transition-all hover:-translate-y-px"
+              style={{
+                color: "#58a6ff",
+                background: "rgba(88,166,255,0.1)",
+                padding: "4px 12px",
+                borderRadius: "8px",
+                border: "1px solid rgba(88,166,255,0.25)",
+                textDecoration: "none",
+              }}
+            >
+              💻 IDE
+            </Link>
+          )}
         </div>
 
         {/* Desktop CTA */}
@@ -101,16 +148,38 @@ export function Header() {
       {isOpen && (
         <div className="md:hidden border-t border-[rgba(0,201,167,0.1)] bg-[#030e09]/95 backdrop-blur-xl">
           <div className="flex flex-col gap-1 p-4">
-            {["Features", "Pricing", "FAQ", "IDE"].map(label => (
+            {["Features", "Pricing", "FAQ"].map(label => (
               <Link
                 key={label}
-                href={label === "IDE" ? "/ide" : `#${label.toLowerCase()}`}
+                href={`#${label.toLowerCase()}`}
                 onClick={() => setIsOpen(false)}
                 className="text-sm text-[rgba(200,230,220,0.7)] hover:text-[#00c9a7] transition-colors px-3 py-2.5 rounded-lg hover:bg-[rgba(0,201,167,0.06)]"
               >
                 {label}
               </Link>
             ))}
+            {/* Smart workspace link in mobile menu */}
+            {!isSignedIn && (
+              <Link href="/ide" onClick={() => setIsOpen(false)}
+                className="text-sm text-[rgba(200,230,220,0.7)] hover:text-[#00c9a7] transition-colors px-3 py-2.5 rounded-lg hover:bg-[rgba(0,201,167,0.06)]">
+                IDE
+              </Link>
+            )}
+            {_showDev && (
+              <Link href="/devmode" onClick={() => setIsOpen(false)}
+                className="flex items-center gap-2 text-sm font-bold px-3 py-2.5 rounded-lg"
+                style={{ color: "#f59e0b", background: "rgba(245,158,11,0.08)" }}>
+                ⚙ Dev Mode
+                <span style={{ fontSize: "0.55rem", fontWeight: 800, background: "#f59e0b", color: "#04070e", padding: "1px 5px", borderRadius: "3px" }}>NEW</span>
+              </Link>
+            )}
+            {_showIDE && (
+              <Link href="/ide" onClick={() => setIsOpen(false)}
+                className="flex items-center gap-2 text-sm font-bold px-3 py-2.5 rounded-lg"
+                style={{ color: "#58a6ff", background: "rgba(88,166,255,0.08)" }}>
+                💻 IDE
+              </Link>
+            )}
             <div className="border-t border-[rgba(0,201,167,0.08)] mt-2 pt-3 flex flex-col gap-2">
               <SignedOut>
                 <SignInButton mode="modal">
