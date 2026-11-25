@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@clerk/nextjs/server"
+import { getDevmodePlan } from "@/lib/devmode-plan"
 
 const GEMINI_KEY = process.env.GEMINI_API_KEY || ""
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`
@@ -7,6 +8,10 @@ const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemi
 export async function POST(req: NextRequest) {
   const { userId } = await auth()
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const plan = await getDevmodePlan(userId)
+  if (plan !== "premium") {
+    return NextResponse.json({ error: "This feature requires a Premium plan.", upgrade: true }, { status: 403 })
+  }
 
   try {
     const { code, language, analysis } = await req.json()

@@ -24,7 +24,7 @@ export const FAQ_ITEMS = [
   },
   {
     q: "How do I pay?",
-    a: "Payments are processed by Razorpay from the Dev Mode page. Prices are charged in INR; the USD amounts shown are approximate.",
+    a: "Open Dev Mode, choose a plan and scan the UPI QR code with any UPI app. Then enter the 12-digit transaction ID from your receipt. Your plan is activated once the payment is verified. Prices are in INR; the USD amounts shown are approximate.",
   },
 ] as const
 

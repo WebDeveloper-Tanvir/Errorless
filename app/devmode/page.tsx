@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect, useCallback } from "react"
 import Link from "next/link"
+import { useUser } from "@clerk/nextjs"
+import { UpiPayment } from "@/components/upi-payment"
 import { AlertTriangle, BarChart3, Brain, Check, Copy, Crown, Download, FileCode2, Gauge, Lightbulb, Loader2, Lock, Minus, RefreshCw, ScanSearch, ShieldCheck, Sparkles, Upload, X, Zap } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { Header } from "@/components/header"
@@ -11,12 +13,6 @@ import { cn } from "@/lib/utils"
 type Plan = "none" | "basic" | "premium"
 type Tab = "generate" | "analyze" | "optimize"
 type UploadedFile = { name: string; content: string; language: string }
-
-declare global {
-  interface Window {
-    Razorpay: new (o: Record<string, unknown>) => { open(): void }
-  }
-}
 
 const PLANS = {
   basic: {
@@ -108,9 +104,14 @@ function Busy({ text }: { text: string }) {
 
 
 export default function DevModePage() {
+  const { user, isLoaded } = useUser()
+  // The plan lives on the server (Clerk metadata, set when an admin approves a payment).
   const [plan, setPlan] = useState<Plan>("none")
-  const [paywall, setPaywall] = useState(true)
-  const [payLoading, setPayLoading] = useState<string | null>(null)
+  const [request, setRequest] = useState<{ plan: "basic" | "premium"; status: "pending" | "rejected" } | null>(null)
+  const [statusLoaded, setStatusLoaded] = useState(false)
+  const planRef = useRef<Plan>("none")
+  const [upgrading, setUpgrading] = useState(false)
+  const [selected, setSelected] = useState<"basic" | "premium" | null>(null)
   const [toastMsg, setToastMsg] = useState("")
 
   const [tab, setTab] = useState<Tab>("generate")
@@ -144,48 +145,29 @@ export default function DevModePage() {
     setTimeout(() => setToastMsg(""), 4000)
   }
 
-  const loadRzp = (): Promise<boolean> =>
-    new Promise((res) => {
-      if (window.Razorpay) return res(true)
-      const s = document.createElement("script")
-      s.src = "https://checkout.razorpay.com/v1/checkout.js"
-      s.onload = () => res(true); s.onerror = () => res(false)
-      document.body.appendChild(s)
-    })
-
-  const handlePay = async (pid: "basic" | "premium") => {
-    setPayLoading(pid)
-    const ok = await loadRzp()
-    if (!ok) { showToast("Payment gateway failed to load."); setPayLoading(null); return }
-
+  const refreshStatus = useCallback(async () => {
     try {
-      const r = await fetch("/api/devmode/create-order", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan: pid }),
-      })
-      const order = await r.json()
-      if (order.error) { showToast(String(order.error)); setPayLoading(null); return }
+      const r = await fetch("/api/devmode/payment/status")
+      if (r.ok) {
+        const d = await r.json()
+        if (planRef.current === "none" && d.plan !== "none") {
+          showToast(`${d.plan === "premium" ? "Premium" : "Basic"} activated. Welcome to Dev Mode.`)
+        }
+        planRef.current = d.plan
+        setPlan(d.plan)
+        setRequest(d.request)
+        if (d.plan !== "none") { setUpgrading(false); setSelected(null) }
+      }
+    } catch { /* offline: keep current state */ }
+    setStatusLoaded(true)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-      new window.Razorpay({
-        key: "rzp_live_S9yC5XI9qt6E9a",
-        amount: order.amount, currency: order.currency || "INR",
-        name: "Errorless Dev Mode", description: PLANS[pid].desc,
-        order_id: order.orderId, theme: { color: PLANS[pid].color },
-        handler: async (resp: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string }) => {
-          const v = await fetch("/api/devmode/verify-payment", {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ...resp, plan: pid }),
-          })
-          const vd = await v.json()
-          if (vd.success) {
-            setPlan(pid); setPaywall(false)
-            showToast(`${PLANS[pid].name} activated. Welcome to Dev Mode.`)
-          } else showToast("Payment verification failed. Please contact support.")
-        },
-        modal: { ondismiss: () => setPayLoading(null) },
-      }).open()
-    } catch { showToast("Payment error. Please try again."); setPayLoading(null) }
-  }
+  useEffect(() => {
+    if (!isLoaded) return
+    if (user) refreshStatus()
+    else setStatusLoaded(true)
+  }, [isLoaded, user, refreshStatus])
 
   const uploadFile = useCallback((f: File) => {
     const reader = new FileReader()
@@ -250,7 +232,8 @@ export default function DevModePage() {
   }
 
   const isPremium = plan === "premium"
-  const upgrade = () => { setPlan("none"); setPaywall(true) }
+  const paywall = plan === "none" || upgrading
+  const upgrade = () => { setSelected(null); setUpgrading(true) }
 
   const toast = toastMsg ? (
     <div role="status" className="fixed bottom-6 left-1/2 z-50 max-w-[90vw] -translate-x-1/2 rounded-xl border border-brand/30 bg-popover px-4 py-3 text-sm shadow-glow">
@@ -259,69 +242,112 @@ export default function DevModePage() {
   ) : null
 
   // ─── PAYWALL ────────────────────────────────────────────────────────────────
-  if (paywall) return (
+  if (!statusLoaded) return (
     <div className="min-h-screen bg-background">
       <Header />
-      <main id="main" className="bg-mesh">
-        <div className="mx-auto max-w-5xl px-4 py-16 sm:px-6 sm:py-20">
-          <div className="mx-auto max-w-2xl text-center">
-            <p className="inline-flex items-center gap-2 rounded-full border border-brand/25 bg-brand/10 px-3.5 py-1.5 font-mono text-xs text-brand">
-              <Lock className="size-3.5" aria-hidden /> Dev Mode
-            </p>
-            <h1 className="mt-5 text-balance text-4xl font-semibold tracking-tight sm:text-5xl">
-              Unlock <span className="brand-gradient">Dev Mode</span>
-            </h1>
-            <p className="mt-4 text-lg text-muted-foreground">
-              Generate, analyze and optimize code with AI. Pick a plan to begin.
-            </p>
-          </div>
-
-          <div className="mx-auto mt-12 grid max-w-3xl gap-6 md:grid-cols-2">
-            {(["basic", "premium"] as const).map((pid) => {
-              const pl = PLANS[pid]
-              const featured = pid === "premium"
-              return (
-                <article key={pid} className={cn("relative flex flex-col rounded-2xl border bg-card p-6 shadow-card", featured ? "border-brand/50 shadow-glow" : "border-border")}>
-                  {featured && (
-                    <span className="absolute -top-3 left-6 inline-flex items-center gap-1 rounded-full bg-brand-gradient px-3 py-1 text-xs font-semibold text-primary-foreground">
-                      <Crown className="size-3" aria-hidden /> Best value
-                    </span>
-                  )}
-                  <h2 className="text-lg font-semibold">{pl.name}</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">{pl.desc}</p>
-                  <p className="mt-5 flex items-baseline gap-2">
-                    <span className="text-4xl font-semibold tracking-tight">{pl.price}</span>
-                    <span className="text-sm text-muted-foreground">{pl.priceINR}</span>
-                  </p>
-                  <ul className="mt-6 flex-1 space-y-3 text-sm">
-                    {pl.features.map((f) => (
-                      <li key={f.text} className="flex items-start gap-2.5">
-                        {f.ok ? <Check className="mt-0.5 size-4 shrink-0 text-brand" aria-hidden /> : <Minus className="mt-0.5 size-4 shrink-0 text-muted-foreground/50" aria-hidden />}
-                        <span className={f.ok ? "text-foreground/90" : "text-muted-foreground/70"}>
-                          {f.text}{!f.ok && <span className="sr-only"> (not included)</span>}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                  <Button className="mt-8 w-full" variant={featured ? "default" : "outline"} onClick={() => handlePay(pid)} disabled={payLoading === pid}>
-                    {payLoading === pid ? <><Loader2 className="animate-spin" aria-hidden /> Processing…</> : <>Pay {pl.priceINR} &amp; unlock</>}
-                  </Button>
-                </article>
-              )
-            })}
-          </div>
-
-          <p className="mt-8 text-center text-sm text-muted-foreground">
-            Secured by Razorpay · UPI, cards and net banking
-          </p>
-          <p className="mt-2 text-center text-sm">
-            <Link href="/ide" className="text-brand underline-offset-4 hover:underline">Continue with the free IDE</Link>
-          </p>
-        </div>
-      </main>
-      {toast}
+      <div role="status" className="flex min-h-[60vh] items-center justify-center text-muted-foreground">
+        <Loader2 className="size-6 animate-spin text-brand" aria-hidden /><span className="sr-only">Loading Dev Mode</span>
+      </div>
     </div>
   )
+
+  if (paywall) {
+    const pending = request?.status === "pending"
+    const rejected = request?.status === "rejected"
+    const offered = (["basic", "premium"] as const).filter((pid) => !(plan === "basic" && pid === "basic"))
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <main id="main" className="bg-mesh">
+          <div className="mx-auto max-w-5xl px-4 py-16 sm:px-6 sm:py-20">
+            <div className="mx-auto max-w-2xl text-center">
+              <p className="inline-flex items-center gap-2 rounded-full border border-brand/25 bg-brand/10 px-3.5 py-1.5 font-mono text-xs text-brand">
+                <Lock className="size-3.5" aria-hidden /> Dev Mode
+              </p>
+              <h1 className="mt-5 text-balance text-4xl font-semibold tracking-tight sm:text-5xl">
+                {plan === "basic" ? <>Upgrade to <span className="brand-gradient">Premium</span></> : <>Unlock <span className="brand-gradient">Dev Mode</span></>}
+              </h1>
+              <p className="mt-4 text-lg text-muted-foreground">
+                Generate, analyze and optimize code with AI. Pay with any UPI app.
+              </p>
+            </div>
+
+            {pending ? (
+              <div role="status" className="mx-auto mt-12 max-w-xl rounded-2xl border border-brand/30 bg-card p-8 text-center shadow-card">
+                <Loader2 className="mx-auto size-6 animate-spin text-brand" aria-hidden />
+                <h2 className="mt-4 text-lg font-semibold">Payment awaiting verification</h2>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  We received your {request?.plan === "premium" ? "Premium" : "Basic"} payment details. Access starts as soon as the payment is verified.
+                </p>
+                <Button className="mt-6" variant="outline" onClick={refreshStatus}>Check status</Button>
+              </div>
+            ) : selected ? (
+              <div className="mt-12">
+                <UpiPayment
+                  plan={selected}
+                  planName={PLANS[selected].name}
+                  amountINR={PLANS[selected].priceINR}
+                  onSubmitted={() => { setSelected(null); refreshStatus() }}
+                  onBack={() => setSelected(null)}
+                />
+              </div>
+            ) : (
+              <>
+                {rejected && (
+                  <p role="alert" className="mx-auto mt-10 max-w-xl rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-center text-sm text-destructive">
+                    We couldn&apos;t verify your last payment. Check the transaction ID and submit it again.
+                  </p>
+                )}
+                <div className={cn("mx-auto mt-12 grid max-w-3xl gap-6", offered.length > 1 && "md:grid-cols-2")}>
+                  {offered.map((pid) => {
+                    const pl = PLANS[pid]
+                    const featured = pid === "premium"
+                    return (
+                      <article key={pid} className={cn("relative flex flex-col rounded-2xl border bg-card p-6 shadow-card", featured ? "border-brand/50 shadow-glow" : "border-border")}>
+                        {featured && (
+                          <span className="absolute -top-3 left-6 inline-flex items-center gap-1 rounded-full bg-brand-gradient px-3 py-1 text-xs font-semibold text-primary-foreground">
+                            <Crown className="size-3" aria-hidden /> Best value
+                          </span>
+                        )}
+                        <h2 className="text-lg font-semibold">{pl.name}</h2>
+                        <p className="mt-1 text-sm text-muted-foreground">{pl.desc}</p>
+                        <p className="mt-5 flex items-baseline gap-2">
+                          <span className="text-4xl font-semibold tracking-tight">{pl.priceINR}</span>
+                          <span className="text-sm text-muted-foreground">≈ {pl.price}</span>
+                        </p>
+                        <ul className="mt-6 flex-1 space-y-3 text-sm">
+                          {pl.features.map((f) => (
+                            <li key={f.text} className="flex items-start gap-2.5">
+                              {f.ok ? <Check className="mt-0.5 size-4 shrink-0 text-brand" aria-hidden /> : <Minus className="mt-0.5 size-4 shrink-0 text-muted-foreground/50" aria-hidden />}
+                              <span className={f.ok ? "text-foreground/90" : "text-muted-foreground/70"}>
+                                {f.text}{!f.ok && <span className="sr-only"> (not included)</span>}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                        <Button className="mt-8 w-full" variant={featured ? "default" : "outline"} onClick={() => setSelected(pid)}>
+                          Pay {pl.priceINR} with UPI
+                        </Button>
+                      </article>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+
+            <p className="mt-10 text-center text-sm">
+              {plan === "basic" ? (
+                <button type="button" onClick={() => setUpgrading(false)} className="text-brand underline-offset-4 hover:underline">Back to Dev Mode</button>
+              ) : (
+                <Link href="/ide" className="text-brand underline-offset-4 hover:underline">Continue with the free IDE</Link>
+              )}
+            </p>
+          </div>
+        </main>
+        {toast}
+      </div>
+    )
+  }
 
   // ─── WORKSPACE ──────────────────────────────────────────────────────────────
   const TABS: { id: Tab; label: string; icon: LucideIcon; locked: boolean }[] = [

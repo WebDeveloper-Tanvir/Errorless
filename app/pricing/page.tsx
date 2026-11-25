@@ -28,7 +28,7 @@ export default function PricingPage() {
               <PricingCards />
             </div>
             <p className="mx-auto mt-8 max-w-2xl text-center text-xs text-muted-foreground">
-              Dev Mode plans are paid in INR through Razorpay from the Dev Mode page. USD amounts are approximate.
+              Dev Mode plans are paid in INR with any UPI app by scanning a QR code on the Dev Mode page. Access starts once your payment is verified. USD amounts are approximate.
             </p>
           </div>
         </section>

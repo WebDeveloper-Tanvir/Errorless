@@ -1,10 +1,9 @@
 /**
  * Plans offered today. Prices and feature flags mirror the checkout in
- * app/devmode/page.tsx (Razorpay). Keep the two in sync when plans change.
+ * app/devmode/page.tsx (UPI QR checkout). Keep the two in sync when plans change.
  *
- * NOTE: the billing period is intentionally not stated. The Dev Mode UI says
- * "/month" but /api/devmode/create-order creates a one-off Razorpay order, so
- * the product owner needs to decide which is true before we publish it here.
+ * NOTE: the billing period is intentionally not stated until the product owner
+ * decides whether a payment is one-off or recurring (plans currently never expire).
  */
 export interface Plan {
   id: "free" | "basic" | "premium"
@@ -36,7 +35,7 @@ export const PLANS: Plan[] = [
     id: "basic",
     name: "Basic",
     price: "$2.5",
-    priceNote: "₹209 · paid via Razorpay",
+    priceNote: "₹209 · pay with UPI",
     description: "Generate and analyze code. Memory resets every 24 hours.",
     features: [
       { text: "Code generation", included: true },
@@ -51,7 +50,7 @@ export const PLANS: Plan[] = [
     id: "premium",
     name: "Premium",
     price: "$5",
-    priceNote: "₹419 · paid via Razorpay",
+    priceNote: "₹419 · pay with UPI",
     description: "Full access: generate, analyze, optimize, with permanent memory.",
     features: [
       { text: "Code generation", included: true },
