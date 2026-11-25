@@ -1,122 +1,243 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600&display=swap');
+@custom-variant dark (&:is(.dark *));
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Errorless design system
+   Dark-first developer SaaS. Surfaces step up in lightness; the cyan accent is
+   reserved for primary actions and live/active state, violet for AI/secondary.
+   ────────────────────────────────────────────────────────────────────────── */
 
 :root {
-  /* Brand palette extracted from logo */
-  --el-teal:        #00c9a7;
-  --el-cyan:        #00b4d8;
-  --el-blue:        #4361ee;
-  --el-violet:      #7b5ea7;
-  --el-glow-teal:   rgba(0, 201, 167, 0.18);
-  --el-glow-cyan:   rgba(0, 180, 216, 0.15);
-  --el-glow-violet: rgba(123, 94, 167, 0.18);
+  color-scheme: dark;
 
-  /* Tailwind CSS vars */
-  --background:           #030e09;
-  --foreground:           #f0faf6;
-  --card:                 rgba(5, 22, 14, 0.85);
-  --card-foreground:      #f0faf6;
-  --popover:              #060f0b;
-  --popover-foreground:   #f0faf6;
-  --primary:              #00c9a7;
-  --primary-foreground:   #030e09;
-  --secondary:            rgba(0, 180, 216, 0.1);
-  --secondary-foreground: #f0faf6;
-  --muted:                rgba(255,255,255,0.06);
-  --muted-foreground:     rgba(200, 230, 220, 0.55);
-  --accent:               #4361ee;
-  --accent-foreground:    #f0faf6;
-  --destructive:          #ff4d6d;
-  --destructive-foreground: #fff;
-  --border:               rgba(0, 201, 167, 0.12);
-  --input:                rgba(0, 201, 167, 0.08);
-  --ring:                 #00c9a7;
-  --radius:               0.625rem;
+  /* Brand */
+  --brand:        #00cfff;
+  --brand-strong: #33daff;
+  --violet:       #8b5cf6;
+  --violet-soft:  #a78bfa;
 
-  --sidebar: #040f0a;
-  --sidebar-foreground: #f0faf6;
-  --sidebar-primary: #00c9a7;
-  --sidebar-primary-foreground: #030e09;
-  --sidebar-accent: rgba(0,201,167,0.08);
-  --sidebar-accent-foreground: #f0faf6;
-  --sidebar-border: rgba(0,201,167,0.1);
-  --sidebar-ring: #00c9a7;
+  /* Surfaces */
+  --background:           #080d18;
+  --surface:              #0d1424;
+  --surface-elevated:     #121b2f;
+  --foreground:           #e8eef9;
+  --muted-foreground:     #8e9bb4;   /* 6.6:1 on --background */
+
+  --card:                 #0d1424;
+  --card-foreground:      #e8eef9;
+  --popover:              #101828;
+  --popover-foreground:   #e8eef9;
+
+  --primary:              #00cfff;
+  --primary-foreground:   #04111c;   /* 9:1 on --primary */
+  --secondary:            #121b2f;
+  --secondary-foreground: #e8eef9;
+  --muted:                #121b2f;
+  --accent:               #17233b;
+  --accent-foreground:    #e8eef9;
+
+  --destructive:          #f43f5e;
+  --destructive-foreground: #ffffff;
+  --success:              #34d399;
+  --warning:              #fbbf24;
+
+  --border:               rgba(148, 163, 184, 0.14);
+  --input:                rgba(148, 163, 184, 0.22);
+  --ring:                 #00cfff;
+  --radius:               0.75rem;
+
+  --chart-1: #00cfff;
+  --chart-2: #8b5cf6;
+  --chart-3: #34d399;
+  --chart-4: #fbbf24;
+  --chart-5: #f43f5e;
+
+  --sidebar:                    #0a1020;
+  --sidebar-foreground:         #e8eef9;
+  --sidebar-primary:            #00cfff;
+  --sidebar-primary-foreground: #04111c;
+  --sidebar-accent:             #17233b;
+  --sidebar-accent-foreground:  #e8eef9;
+  --sidebar-border:             rgba(148, 163, 184, 0.14);
+  --sidebar-ring:               #00cfff;
+
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 12px 32px -12px rgba(0, 0, 0, 0.6);
+  --shadow-glow: 0 0 0 1px rgba(0, 207, 255, 0.25), 0 8px 40px -8px rgba(0, 207, 255, 0.35);
 }
 
-* { box-sizing: border-box; }
+/* Maps tokens to Tailwind v4 utilities (bg-background, text-primary, ...).
+   The previous stylesheet had no @theme block, so these utilities did not
+   exist and the shadcn primitives rendered unstyled. */
+@theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 
-html { scroll-behavior: smooth; }
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-violet: var(--violet);
+  --color-violet-soft: var(--violet-soft);
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
 
-body {
-  background-color: var(--background);
-  color: var(--foreground);
-  font-family: 'Syne', sans-serif;
-  -webkit-font-smoothing: antialiased;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+
+  --shadow-card: var(--shadow-card);
+  --shadow-glow: var(--shadow-glow);
 }
 
-/* ── Brand gradient text ─────────────────────────────────────── */
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 5rem; /* sticky header offset for anchor links */
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+  ::selection {
+    background: rgba(0, 207, 255, 0.28);
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* ── Reusable brand utilities ─────────────────────────────────────────── */
+
 .brand-gradient {
-  background: linear-gradient(135deg, var(--el-teal) 0%, var(--el-cyan) 40%, var(--el-blue) 75%, var(--el-violet) 100%);
+  background: linear-gradient(120deg, var(--brand) 0%, var(--violet) 100%);
   -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
   background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
 }
 
-/* ── Logo wordmark style ─────────────────────────────────────── */
-.wordmark-error { color: var(--el-blue); }
-.wordmark-less  { color: #fff; }
+.bg-brand-gradient {
+  background-image: linear-gradient(120deg, var(--brand) 0%, #5b8cff 55%, var(--violet) 100%);
+}
 
-/* ── Global background mesh ──────────────────────────────────── */
+/* Subtle page backdrop: soft cyan glow top-left, violet bottom-right + fine grid */
 .bg-mesh {
   background:
-    radial-gradient(ellipse 70% 50% at 15% 20%,  rgba(0,201,167,0.07)  0%, transparent 70%),
-    radial-gradient(ellipse 60% 60% at 85% 80%,  rgba(67,97,238,0.08)  0%, transparent 70%),
-    radial-gradient(ellipse 50% 40% at 50% 50%,  rgba(0,180,216,0.04)  0%, transparent 60%),
-    #030e09;
+    radial-gradient(ellipse 60% 45% at 12% 0%,  rgba(0, 207, 255, 0.10) 0%, transparent 70%),
+    radial-gradient(ellipse 50% 50% at 92% 18%, rgba(139, 92, 246, 0.10) 0%, transparent 70%),
+    var(--background);
 }
 
-/* ── Glow utilities ──────────────────────────────────────────── */
-.glow-teal   { box-shadow: 0 0 32px rgba(0,201,167,0.25), 0 0 80px rgba(0,201,167,0.08); }
-.glow-blue   { box-shadow: 0 0 32px rgba(67,97,238,0.25),  0 0 80px rgba(67,97,238,0.08); }
-.text-glow   { text-shadow: 0 0 40px rgba(0,201,167,0.4); }
+.bg-grid {
+  background-image:
+    linear-gradient(to right, rgba(148, 163, 184, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(148, 163, 184, 0.06) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 30%, transparent 80%);
+}
 
-/* ── Glass card ──────────────────────────────────────────────── */
+.surface-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+}
+
 .glass {
-  background: rgba(5, 25, 16, 0.6);
-  backdrop-filter: blur(16px) saturate(1.4);
-  border: 1px solid rgba(0, 201, 167, 0.12);
+  background: rgba(13, 20, 36, 0.7);
+  backdrop-filter: blur(16px) saturate(1.3);
+  border: 1px solid var(--border);
 }
 
-/* ── Circuit node animation ──────────────────────────────────── */
+.glow-brand { box-shadow: var(--shadow-glow); }
+
+/* Legacy names still referenced by /devmode and /ide; recolored to the new palette */
+.glow-teal { box-shadow: var(--shadow-glow); }
+.glow-blue { box-shadow: 0 0 32px rgba(139, 92, 246, 0.25); }
+.text-glow { text-shadow: 0 0 40px rgba(0, 207, 255, 0.4); }
+.wordmark-error { color: var(--brand); }
+.wordmark-less  { color: #fff; }
+
+/* ── Motion ───────────────────────────────────────────────────────────── */
+
 @keyframes pulse-node {
   0%, 100% { opacity: 0.4; transform: scale(1); }
-  50%       { opacity: 1;   transform: scale(1.3); }
+  50%      { opacity: 1;   transform: scale(1.3); }
 }
-
 @keyframes drift {
-  0%   { transform: translateY(0px) translateX(0px); }
-  33%  { transform: translateY(-8px) translateX(4px); }
-  66%  { transform: translateY(4px) translateX(-6px); }
-  100% { transform: translateY(0px) translateX(0px); }
+  0%   { transform: translate(0, 0); }
+  33%  { transform: translate(4px, -8px); }
+  66%  { transform: translate(-6px, 4px); }
+  100% { transform: translate(0, 0); }
 }
-
-@keyframes scan-line {
-  0%   { top: -2px; opacity: 0; }
-  10%  { opacity: 0.6; }
-  90%  { opacity: 0.6; }
-  100% { top: 100%; opacity: 0; }
-}
-
 @keyframes blink-cursor {
   0%, 100% { opacity: 1; }
-  50%       { opacity: 0; }
+  50%      { opacity: 0; }
+}
+@keyframes scan {
+  0%   { transform: translateY(-100%); opacity: 0; }
+  15%  { opacity: 1; }
+  85%  { opacity: 1; }
+  100% { transform: translateY(100%); opacity: 0; }
 }
 
 .animate-pulse-node { animation: pulse-node 2.5s ease-in-out infinite; }
 .animate-drift      { animation: drift 8s ease-in-out infinite; }
 .cursor-blink       { animation: blink-cursor 1s step-end infinite; }
+.animate-scan       { animation: scan 2.4s ease-in-out infinite; }
 
-/* ── Mono font for code ──────────────────────────────────────── */
-.font-mono { font-family: 'JetBrains Mono', monospace; }
+/* ── Scrollbars (code panels, sidebars) ───────────────────────────────── */
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
+}

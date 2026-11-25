@@ -1,228 +1,136 @@
 "use client"
 
-import { useUser, useClerk } from "@clerk/nextjs"
-import { useRouter } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Progress } from "@/components/ui/progress"
-import { LogOut, BookOpen, Trophy, Code } from "lucide-react"
 import Link from "next/link"
+import { ArrowUpRight, BookText, Code2, FileCode2, Terminal } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
+import { useUser } from "@clerk/nextjs"
+import { Header } from "@/components/header"
+import { Footer } from "@/components/footer"
+import { Skeleton } from "@/components/ui/skeleton"
+import { useWorkspace, type WorkspaceKind } from "@/hooks/use-workspace"
+import { accountLabel, classifyEmail } from "@/lib/emailClassifier"
+import { cn } from "@/lib/utils"
 
-const MOCK_COURSES = [
+const WORKSPACES: {
+  kind: WorkspaceKind | "editor"
+  href: string
+  title: string
+  body: string
+  icon: LucideIcon
+}[] = [
   {
-    id: "python-101",
-    title: "Python Basics",
-    description: "Learn the fundamentals of Python programming",
-    language: "python",
-    icon: "🐍",
-    color: "#3776ab",
-    difficulty_level: "Beginner",
+    kind: "devmode",
+    href: "/devmode",
+    title: "Dev Mode",
+    body: "AI analysis, code generation and optimization with saved session memory.",
+    icon: Terminal,
   },
   {
-    id: "javascript-101",
-    title: "JavaScript Essentials",
-    description: "Master JavaScript from basics to advanced concepts",
-    language: "javascript",
-    icon: "⚡",
-    color: "#f7df1e",
-    difficulty_level: "Beginner",
+    kind: "ide",
+    href: "/ide",
+    title: "IDE",
+    body: "Monaco editor with file explorer, terminal and an assistant that analyzes attached files.",
+    icon: Code2,
   },
   {
-    id: "cpp-101",
-    title: "C++ Programming",
-    description: "Deep dive into C++ and object-oriented programming",
-    language: "cpp",
-    icon: "⚙️",
-    color: "#00599c",
-    difficulty_level: "Intermediate",
-  },
-  {
-    id: "java-101",
-    title: "Java Fundamentals",
-    description: "Learn Java programming and OOP concepts",
-    language: "java",
-    icon: "☕",
-    color: "#007396",
-    difficulty_level: "Intermediate",
-  },
-  {
-    id: "swift-101",
-    title: "Swift for iOS",
-    description: "Build iOS apps with Swift",
-    language: "swift",
-    icon: "🍎",
-    color: "#fa7343",
-    difficulty_level: "Intermediate",
-  },
-  {
-    id: "ml-101",
-    title: "Machine Learning Basics",
-    description: "Introduction to ML and AI concepts",
-    language: "python",
-    icon: "🤖",
-    color: "#ff6b6b",
-    difficulty_level: "Advanced",
+    kind: "editor",
+    href: "/editor",
+    title: "Quick editor",
+    body: "Paste a snippet and see line-accurate issues instantly. No setup.",
+    icon: FileCode2,
   },
 ]
 
-const MOCK_PROGRESS: Record<string, any> = {
-  "python-101": { progress_percentage: 45, completed_lessons: 9, total_lessons: 20 },
-  "javascript-101": { progress_percentage: 60, completed_lessons: 12, total_lessons: 20 },
-  "cpp-101": { progress_percentage: 30, completed_lessons: 6, total_lessons: 20 },
-}
-
-interface UserProfile {
-  full_name: string
-  email: string
-  avatar_url: string | null
-}
-
 export default function DashboardPage() {
-  const router = useRouter()
   const { user, isLoaded } = useUser()
-  const { signOut } = useClerk()
-  const stats = { coursesEnrolled: Object.keys(MOCK_PROGRESS).length, quizzesPassed: 5, hoursLearned: 15 }
+  const { kind } = useWorkspace()
 
-  if (!isLoaded) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-muted-foreground">Loading dashboard...</p>
-      </div>
-    )
-  }
-
-  const handleLogout = () => {
-    signOut({ redirectUrl: "/" })
-  }
+  const email = user?.primaryEmailAddress?.emailAddress ?? ""
+  const name = user?.firstName || user?.fullName || email.split("@")[0] || "there"
+  const type = email ? classifyEmail(email) : null
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border/50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">Errorless</h1>
-            <p className="text-sm text-muted-foreground">Learn to Code, Master Programming</p>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="text-right hidden md:block">
-              <p className="font-medium">{user?.fullName || user?.firstName || "User"}</p>
-              <p className="text-sm text-muted-foreground">{user?.primaryEmailAddress?.emailAddress}</p>
+      <Header />
+      <main id="main" className="mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:px-8">
+        <header className="mb-10">
+          {isLoaded ? (
+            <>
+              <p className="font-mono text-xs uppercase tracking-[0.18em] text-brand">
+                {type ? accountLabel(type) : "Dashboard"}
+              </p>
+              <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Welcome back, {name}</h1>
+              <p className="mt-2 text-muted-foreground">Pick a workspace and start debugging.</p>
+            </>
+          ) : (
+            <div className="space-y-3" aria-busy="true" aria-label="Loading dashboard">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-9 w-72" />
+              <Skeleton className="h-4 w-56" />
             </div>
-            <Button variant="outline" size="sm" onClick={handleLogout} className="bg-transparent">
-              <LogOut className="h-4 w-4 mr-2" />
-              Logout
-            </Button>
-          </div>
-        </div>
-      </header>
+          )}
+        </header>
 
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
-        {/* Stats Section */}
-        <div className="grid gap-4 md:grid-cols-3 mb-8">
-          <Card className="border-border/50">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Courses Enrolled</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{stats.coursesEnrolled}</div>
-              <p className="text-xs text-muted-foreground mt-1">Active learning paths</p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-border/50">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                <Trophy className="h-4 w-4" />
-                Quizzes Passed
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{stats.quizzesPassed}</div>
-              <p className="text-xs text-muted-foreground mt-1">Assessments completed</p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-border/50">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Hours Learned</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{stats.hoursLearned}</div>
-              <p className="text-xs text-muted-foreground mt-1">Total learning time</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Courses Section */}
-        <div>
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold mb-2">Available Courses</h2>
-            <p className="text-muted-foreground">Choose a course and start learning today</p>
-          </div>
-
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {MOCK_COURSES.map((course) => {
-              const courseProgress = MOCK_PROGRESS[course.id]
-              const progressPercentage = courseProgress?.progress_percentage || 0
-
+        <section aria-labelledby="workspaces-heading">
+          <h2 id="workspaces-heading" className="sr-only">Workspaces</h2>
+          <ul className="grid gap-5 md:grid-cols-3">
+            {WORKSPACES.map(({ kind: k, href, title, body, icon: Icon }) => {
+              const recommended = k === kind
               return (
-                <Card
-                  key={course.id}
-                  className="border-border/50 hover:border-border transition-colors overflow-hidden"
-                >
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="text-3xl">{course.icon}</div>
-                      <span
-                        className="px-2 py-1 rounded text-xs font-medium"
-                        style={{
-                          backgroundColor: `${course.color}20`,
-                          color: course.color,
-                        }}
-                      >
-                        {course.difficulty_level}
-                      </span>
-                    </div>
-                    <CardTitle className="text-lg">{course.title}</CardTitle>
-                    <CardDescription className="line-clamp-2">{course.description}</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {courseProgress && (
-                      <div className="space-y-2">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Progress</span>
-                          <span className="font-medium">{progressPercentage}%</span>
-                        </div>
-                        <Progress value={progressPercentage} className="h-2" />
-                        <p className="text-xs text-muted-foreground">
-                          {courseProgress.completed_lessons} of {courseProgress.total_lessons} lessons
-                        </p>
-                      </div>
+                <li key={href}>
+                  <Link
+                    href={href}
+                    className={cn(
+                      "group flex h-full flex-col rounded-2xl border bg-card p-6 shadow-card transition-colors hover:border-brand/40",
+                      recommended ? "border-brand/40" : "border-border",
                     )}
-
-                    <div className="flex gap-2 pt-2">
-                      <Link href={`/learn/${course.id}`} className="flex-1">
-                        <Button variant="outline" size="sm" className="w-full bg-transparent">
-                          <BookOpen className="h-4 w-4 mr-2" />
-                          Learn
-                        </Button>
-                      </Link>
-                      <Link href={`/quiz/${course.id}`} className="flex-1">
-                        <Button variant="outline" size="sm" className="w-full bg-transparent">
-                          <Code className="h-4 w-4 mr-2" />
-                          Quiz
-                        </Button>
-                      </Link>
+                  >
+                    <div className="flex items-start justify-between">
+                      <span className="inline-flex size-11 items-center justify-center rounded-xl bg-brand/10 text-brand ring-1 ring-brand/20">
+                        <Icon className="size-5" aria-hidden />
+                      </span>
+                      <ArrowUpRight
+                        className="size-5 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-brand"
+                        aria-hidden
+                      />
                     </div>
-                  </CardContent>
-                </Card>
+                    <h3 className="mt-5 flex items-center gap-2 text-lg font-semibold">
+                      {title}
+                      {recommended && (
+                        <span className="rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand">
+                          Recommended
+                        </span>
+                      )}
+                    </h3>
+                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{body}</p>
+                  </Link>
+                </li>
               )
             })}
-          </div>
-        </div>
+          </ul>
+        </section>
+
+        <section aria-labelledby="resources-heading" className="mt-12">
+          <h2 id="resources-heading" className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+            Resources
+          </h2>
+          <ul className="mt-4 grid gap-3 sm:grid-cols-2">
+            <li>
+              <Link href="/docs" className="flex items-center gap-3 rounded-xl border border-border bg-surface p-4 text-sm transition-colors hover:border-brand/40">
+                <BookText className="size-5 text-violet-soft" aria-hidden />
+                <span><span className="font-medium">Documentation</span><span className="block text-muted-foreground">How analysis works and how your code is handled</span></span>
+              </Link>
+            </li>
+            <li>
+              <Link href="/profile" className="flex items-center gap-3 rounded-xl border border-border bg-surface p-4 text-sm transition-colors hover:border-brand/40">
+                <FileCode2 className="size-5 text-violet-soft" aria-hidden />
+                <span><span className="font-medium">Profile &amp; settings</span><span className="block text-muted-foreground">Account details, security and saved data</span></span>
+              </Link>
+            </li>
+          </ul>
+        </section>
       </main>
+      <Footer />
     </div>
   )
 }

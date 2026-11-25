@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 
-// Your live Razorpay keys
-const KEY_ID = process.env.RAZORPAY_KEY_ID || "rzp_live_S9yC5XI9qt6E9a"
-const KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || "E82uvA3XxzAOr0rKQYrt97pR"
+// Razorpay credentials must come from environment variables (never hardcode them).
+const KEY_ID = process.env.RAZORPAY_KEY_ID
+const KEY_SECRET = process.env.RAZORPAY_KEY_SECRET
 
 const DEVMODE_PLANS = {
   basic: {
@@ -20,6 +20,10 @@ const DEVMODE_PLANS = {
 }
 
 export async function POST(req: NextRequest) {
+  if (!KEY_ID || !KEY_SECRET) {
+    return NextResponse.json({ error: "Payments are not configured." }, { status: 500 })
+  }
+
   try {
     const { plan } = await req.json()
     const planData = DEVMODE_PLANS[plan as keyof typeof DEVMODE_PLANS]

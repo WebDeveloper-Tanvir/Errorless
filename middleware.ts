@@ -10,8 +10,13 @@ const isPublicRoute = createRouteMatcher([
   "/",
   "/login(.*)",
   "/signup(.*)",
+  "/sign-in(.*)",
+  "/sign-up(.*)",
+  "/auth(.*)",
   "/sso-callback(.*)",
   "/pricing(.*)",
+  "/docs(.*)",
+  "/demo(.*)",
   "/learn(.*)",
   "/api/webhooks/(.*)",   // Clerk webhook must be public
 ])

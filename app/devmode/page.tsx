@@ -1,21 +1,23 @@
 "use client"
 
 import { useState, useRef, useEffect, useCallback } from "react"
+import Link from "next/link"
+import { useUser } from "@clerk/nextjs"
+import { UpiPayment } from "@/components/upi-payment"
+import { AlertTriangle, BarChart3, Brain, Check, Copy, Crown, Download, FileCode2, Gauge, Lightbulb, Loader2, Lock, Minus, RefreshCw, ScanSearch, ShieldCheck, Sparkles, Upload, X, Zap } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
+import { Header } from "@/components/header"
+import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 
 type Plan = "none" | "basic" | "premium"
 type Tab = "generate" | "analyze" | "optimize"
 type UploadedFile = { name: string; content: string; language: string }
 
-declare global {
-  interface Window {
-    Razorpay: new (o: Record<string, unknown>) => { open(): void }
-  }
-}
-
 const PLANS = {
   basic: {
     id: "basic", name: "Basic", price: "$2.5", priceINR: "₹209",
-    amountPaise: 20900, color: "#f59e0b", icon: "⚡",
+    amountPaise: 20900, color: "#00cfff",
     features: [
       { text: "Code Generation", ok: true },
       { text: "Code Analysis", ok: true },
@@ -27,7 +29,7 @@ const PLANS = {
   },
   premium: {
     id: "premium", name: "Premium", price: "$5", priceINR: "₹419",
-    amountPaise: 41900, color: "#00ff88", icon: "👑",
+    amountPaise: 41900, color: "#8b5cf6",
     features: [
       { text: "Code Generation", ok: true },
       { text: "Code Analysis", ok: true },
@@ -71,10 +73,45 @@ function loadMemory(plan: Plan) {
   } catch { return null }
 }
 
+// ─── Presentational helpers ─────────────────────────────────────────────────
+function OutputPanel({ title, icon: Icon, text, actions, children }: { title: string; icon: LucideIcon; text?: string; actions?: React.ReactNode; children: React.ReactNode }) {
+  return (
+  <section aria-label={title} className="flex min-h-0 flex-1 flex-col">
+    <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3">
+      <h2 className="flex items-center gap-2 text-sm font-semibold"><Icon className="size-4 text-brand" aria-hidden />{title}</h2>
+      {text && actions}
+    </div>
+    <div aria-live="polite" className="scrollbar-thin flex-1 overflow-auto p-5">{children}</div>
+  </section>
+  )
+}
+function Empty({ icon: Icon, text, sub }: { icon: LucideIcon; text: string; sub: string }) {
+  return (
+  <div className="flex h-full min-h-56 flex-col items-center justify-center gap-2 text-center">
+    <span className="inline-flex size-12 items-center justify-center rounded-2xl bg-brand/10 text-brand ring-1 ring-brand/20"><Icon className="size-6" aria-hidden /></span>
+    <p className="mt-2 font-medium">{text}</p>
+    <p className="text-sm text-muted-foreground">{sub}</p>
+  </div>
+  )
+}
+function Busy({ text }: { text: string }) {
+  return (
+  <div className="flex h-full min-h-56 flex-col items-center justify-center gap-3 text-muted-foreground">
+    <Loader2 className="size-7 animate-spin text-brand" aria-hidden /><p className="text-sm">{text}</p>
+  </div>
+  )
+}
+
+
 export default function DevModePage() {
+  const { user, isLoaded } = useUser()
+  // The plan lives on the server (Clerk metadata, set when an admin approves a payment).
   const [plan, setPlan] = useState<Plan>("none")
-  const [paywall, setPaywall] = useState(true)
-  const [payLoading, setPayLoading] = useState<string | null>(null)
+  const [request, setRequest] = useState<{ plan: "basic" | "premium"; status: "pending" | "rejected" } | null>(null)
+  const [statusLoaded, setStatusLoaded] = useState(false)
+  const planRef = useRef<Plan>("none")
+  const [upgrading, setUpgrading] = useState(false)
+  const [selected, setSelected] = useState<"basic" | "premium" | null>(null)
   const [toastMsg, setToastMsg] = useState("")
 
   const [tab, setTab] = useState<Tab>("generate")
@@ -108,48 +145,29 @@ export default function DevModePage() {
     setTimeout(() => setToastMsg(""), 4000)
   }
 
-  const loadRzp = (): Promise<boolean> =>
-    new Promise((res) => {
-      if (window.Razorpay) return res(true)
-      const s = document.createElement("script")
-      s.src = "https://checkout.razorpay.com/v1/checkout.js"
-      s.onload = () => res(true); s.onerror = () => res(false)
-      document.body.appendChild(s)
-    })
-
-  const handlePay = async (pid: "basic" | "premium") => {
-    setPayLoading(pid)
-    const ok = await loadRzp()
-    if (!ok) { alert("Payment gateway failed."); setPayLoading(null); return }
-
+  const refreshStatus = useCallback(async () => {
     try {
-      const r = await fetch("/api/devmode/create-order", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan: pid }),
-      })
-      const order = await r.json()
-      if (order.error) { alert(order.error); setPayLoading(null); return }
+      const r = await fetch("/api/devmode/payment/status")
+      if (r.ok) {
+        const d = await r.json()
+        if (planRef.current === "none" && d.plan !== "none") {
+          showToast(`${d.plan === "premium" ? "Premium" : "Basic"} activated. Welcome to Dev Mode.`)
+        }
+        planRef.current = d.plan
+        setPlan(d.plan)
+        setRequest(d.request)
+        if (d.plan !== "none") { setUpgrading(false); setSelected(null) }
+      }
+    } catch { /* offline: keep current state */ }
+    setStatusLoaded(true)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-      new window.Razorpay({
-        key: "rzp_live_S9yC5XI9qt6E9a",
-        amount: order.amount, currency: order.currency || "INR",
-        name: "Errorless Dev Mode", description: PLANS[pid].desc,
-        order_id: order.orderId, theme: { color: PLANS[pid].color },
-        handler: async (resp: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string }) => {
-          const v = await fetch("/api/devmode/verify-payment", {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ...resp, plan: pid }),
-          })
-          const vd = await v.json()
-          if (vd.success) {
-            setPlan(pid); setPaywall(false)
-            showToast(`🎉 ${PLANS[pid].name} activated! Welcome to Dev Mode.`)
-          } else alert("Verification failed. Contact support.")
-        },
-        modal: { ondismiss: () => setPayLoading(null) },
-      }).open()
-    } catch { alert("Payment error. Try again."); setPayLoading(null) }
-  }
+  useEffect(() => {
+    if (!isLoaded) return
+    if (user) refreshStatus()
+    else setStatusLoaded(true)
+  }, [isLoaded, user, refreshStatus])
 
   const uploadFile = useCallback((f: File) => {
     const reader = new FileReader()
@@ -213,521 +231,299 @@ export default function DevModePage() {
     const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = filename; a.click()
   }
 
+  const isPremium = plan === "premium"
+  const paywall = plan === "none" || upgrading
+  const upgrade = () => { setSelected(null); setUpgrading(true) }
+
+  const toast = toastMsg ? (
+    <div role="status" className="fixed bottom-6 left-1/2 z-50 max-w-[90vw] -translate-x-1/2 rounded-xl border border-brand/30 bg-popover px-4 py-3 text-sm shadow-glow">
+      {toastMsg}
+    </div>
+  ) : null
+
   // ─── PAYWALL ────────────────────────────────────────────────────────────────
-  if (paywall) return (
-    <>
-      <div className="dv-root">
-        <div className="mesh-bg" />
-        <nav className="top-nav">
-          <a href="/" className="nav-brand"><span className="brand-lt">&lt;</span>Errorless<span className="brand-lt">/&gt;</span></a>
-          <span className="nav-chip">🔒 Dev Mode</span>
-          <a href="/ide" className="nav-ghost">← Back to IDE</a>
-        </nav>
-
-        <div className="pw-wrap">
-          <div className="pw-eyebrow">
-            <div className="terminal-strip">
-              <span className="dot r" /><span className="dot y" /><span className="dot g" />
-              <code>$ errorless devmode --unlock</code>
-            </div>
-          </div>
-          <h1 className="pw-h1">Unlock<br /><em className="pw-em">Dev Mode</em></h1>
-          <p className="pw-p">Generate, analyze, and optimize code with AI. Pick your plan to begin.</p>
-
-          <div className="plans-duo">
-            {(["basic", "premium"] as const).map((pid) => {
-              const pl = PLANS[pid]
-              return (
-                <div key={pid} className={`plan-card ${pid === "premium" ? "plan-premium" : ""}`}>
-                  {pid === "premium" && <div className="best-badge">👑 Best Value</div>}
-                  <div className="plan-glyph">{pl.icon}</div>
-                  <h3 className="plan-h3" style={{ color: pl.color }}>{pl.name}</h3>
-                  <div className="plan-pricing">
-                    <span className="plan-big">{pl.price}</span>
-                    <span className="plan-sep"> / </span>
-                    <span className="plan-inr">{pl.priceINR}</span>
-                    <span className="plan-mo">/mo</span>
-                  </div>
-                  <p className="plan-blurb">{pl.desc}</p>
-                  <ul className="feat-list">
-                    {pl.features.map((f, i) => (
-                      <li key={i} className={f.ok ? "f-yes" : "f-no"}>
-                        <span className="f-bullet">{f.ok ? "✓" : "✕"}</span>
-                        <span className={(f as {italic?: boolean}).italic ? "f-italic" : ""}>{f.text}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <button
-                    className="pay-btn" style={{ background: pl.color }}
-                    onClick={() => handlePay(pid)} disabled={payLoading === pid}
-                  >
-                    {payLoading === pid
-                      ? <><span className="spin" />Processing…</>
-                      : <>Pay {pl.priceINR}/month & Unlock</>}
-                  </button>
-                </div>
-              )
-            })}
-          </div>
-
-          <div className="trust-row">
-            <span>🔒 Razorpay Secured</span><span className="bull">·</span>
-            <span>💳 UPI · Cards · NetBanking</span><span className="bull">·</span>
-            <span>↩️ Cancel anytime</span>
-          </div>
-        </div>
+  if (!statusLoaded) return (
+    <div className="min-h-screen bg-background">
+      <Header />
+      <div role="status" className="flex min-h-[60vh] items-center justify-center text-muted-foreground">
+        <Loader2 className="size-6 animate-spin text-brand" aria-hidden /><span className="sr-only">Loading Dev Mode</span>
       </div>
-      <GlobalStyles />
-    </>
+    </div>
   )
 
-  // ─── MAIN DEV MODE ──────────────────────────────────────────────────────────
-  const isPremium = plan === "premium"
-  const planInfo = PLANS[plan as "basic" | "premium"]
-
-  return (
-    <>
-      <div className="dv-root dv-app">
-        <div className="mesh-bg" />
-
-        {toastMsg && <div className="toast">{toastMsg}</div>}
-
-        <nav className="top-nav">
-          <a href="/" className="nav-brand"><span className="brand-lt">&lt;</span>Errorless<span className="brand-lt">/&gt;</span></a>
-          <div className="nav-status">
-            <span className="status-pulse" />
-            Dev Mode · <span style={{ color: planInfo.color }}>{planInfo.icon} {planInfo.name}</span>
-          </div>
-          <div className="nav-links-right">
-            {plan === "basic" && (
-              <button className="upgrade-chip" onClick={() => { setPlan("none"); setPaywall(true) }}>
-                ↑ Upgrade to Premium
-              </button>
-            )}
-            <a href="/ide" className="nav-ghost">IDE</a>
-            <a href="/" className="nav-ghost">Home</a>
-          </div>
-        </nav>
-
-        <div className="app-shell">
-          {/* SIDEBAR */}
-          <aside className="app-side">
-            {/* Tabs */}
-            <div className="side-section">
-              <p className="side-label">Mode</p>
-              <div className="side-tabs">
-                {(["generate", "analyze", "optimize"] as Tab[]).map((t) => {
-                  const locked = t === "optimize" && !isPremium
-                  const icons = { generate: "✦", analyze: "◎", optimize: "⟳" }
-                  return (
-                    <button key={t} className={`side-tab ${tab === t ? "side-tab-on" : ""} ${locked ? "side-tab-locked" : ""}`}
-                      onClick={() => !locked && setTab(t)}
-                    >
-                      <span className="side-tab-icon">{icons[t]}</span>
-                      <span>{t.charAt(0).toUpperCase() + t.slice(1)}</span>
-                      {locked && <span className="lock-chip">PRO</span>}
-                    </button>
-                  )
-                })}
-              </div>
+  if (paywall) {
+    const pending = request?.status === "pending"
+    const rejected = request?.status === "rejected"
+    const offered = (["basic", "premium"] as const).filter((pid) => !(plan === "basic" && pid === "basic"))
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <main id="main" className="bg-mesh">
+          <div className="mx-auto max-w-5xl px-4 py-16 sm:px-6 sm:py-20">
+            <div className="mx-auto max-w-2xl text-center">
+              <p className="inline-flex items-center gap-2 rounded-full border border-brand/25 bg-brand/10 px-3.5 py-1.5 font-mono text-xs text-brand">
+                <Lock className="size-3.5" aria-hidden /> Dev Mode
+              </p>
+              <h1 className="mt-5 text-balance text-4xl font-semibold tracking-tight sm:text-5xl">
+                {plan === "basic" ? <>Upgrade to <span className="brand-gradient">Premium</span></> : <>Unlock <span className="brand-gradient">Dev Mode</span></>}
+              </h1>
+              <p className="mt-4 text-lg text-muted-foreground">
+                Generate, analyze and optimize code with AI. Pay with any UPI app.
+              </p>
             </div>
 
-            {/* Generate controls */}
-            {tab === "generate" && (
-              <div className="side-section">
-                <p className="side-label">Language</p>
-                <select className="ctrl-sel" value={lang} onChange={e => setLang(e.target.value)}>
-                  {["python","javascript","typescript","java","c","cpp","rust","go","csharp","ruby","php","swift","kotlin","bash"].map(l => (
-                    <option key={l} value={l}>{l}</option>
-                  ))}
-                </select>
-                <p className="side-label" style={{ marginTop: "0.85rem" }}>What to build?</p>
-                <textarea className="ctrl-ta" rows={7} value={prompt} placeholder="Describe your code… e.g. A REST API endpoint in Express.js that handles user authentication with JWT tokens"
-                  onChange={e => setPrompt(e.target.value)}
-                  onKeyDown={e => { if (e.key === "Enter" && e.ctrlKey) handleGenerate() }}
+            {pending ? (
+              <div role="status" className="mx-auto mt-12 max-w-xl rounded-2xl border border-brand/30 bg-card p-8 text-center shadow-card">
+                <Loader2 className="mx-auto size-6 animate-spin text-brand" aria-hidden />
+                <h2 className="mt-4 text-lg font-semibold">Payment awaiting verification</h2>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  We received your {request?.plan === "premium" ? "Premium" : "Basic"} payment details. Access starts as soon as the payment is verified.
+                </p>
+                <Button className="mt-6" variant="outline" onClick={refreshStatus}>Check status</Button>
+              </div>
+            ) : selected ? (
+              <div className="mt-12">
+                <UpiPayment
+                  plan={selected}
+                  planName={PLANS[selected].name}
+                  amountINR={PLANS[selected].priceINR}
+                  onSubmitted={() => { setSelected(null); refreshStatus() }}
+                  onBack={() => setSelected(null)}
                 />
-                <span className="ctrl-hint">Ctrl+Enter to run</span>
-                <button className="action-btn amber-btn" onClick={handleGenerate} disabled={loading || !prompt.trim()}>
-                  {loading ? <><span className="spin" />Generating…</> : <><span>✦</span> Generate Code</>}
-                </button>
               </div>
-            )}
-
-            {/* Analyze controls */}
-            {tab === "analyze" && (
-              <div className="side-section">
-                <p className="side-label">Upload Code File</p>
-                <div
-                  className={`dropzone ${drag ? "dz-over" : ""} ${file ? "dz-has-file" : ""}`}
-                  onDragOver={e => { e.preventDefault(); setDrag(true) }}
-                  onDragLeave={() => setDrag(false)}
-                  onDrop={e => { e.preventDefault(); setDrag(false); const f = e.dataTransfer.files[0]; if (f) uploadFile(f) }}
-                  onClick={() => fileRef.current?.click()}
-                >
-                  <input ref={fileRef} type="file" hidden
-                    accept=".py,.js,.ts,.tsx,.jsx,.java,.cpp,.c,.cs,.rs,.go,.rb,.php,.swift,.kt,.r,.lua,.sh,.html,.css"
-                    onChange={e => { const f = e.target.files?.[0]; if (f) uploadFile(f) }}
-                  />
-                  {file ? (
-                    <div className="file-row">
-                      <span style={{ fontSize: "1.5rem" }}>📄</span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div className="file-nm">{file.name}</div>
-                        <div className="file-mt">{file.language} · {file.content.split("\n").length} lines</div>
-                      </div>
-                      <button className="file-x" onClick={e => { e.stopPropagation(); setFile(null); setAnalysis(null); setOptimized("") }}>✕</button>
-                    </div>
-                  ) : (
-                    <div className="dz-empty">
-                      <span className="dz-icon">⬆</span>
-                      <span className="dz-text">Drop your code file here</span>
-                      <span className="dz-sub">Any language · Click to browse</span>
-                    </div>
-                  )}
-                </div>
-                {file && (
-                  <button className="action-btn blue-btn" onClick={handleAnalyze} disabled={loading}>
-                    {loading ? <><span className="spin" />Analyzing…</> : <><span>◎</span> Analyze Code</>}
-                  </button>
+            ) : (
+              <>
+                {rejected && (
+                  <p role="alert" className="mx-auto mt-10 max-w-xl rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-center text-sm text-destructive">
+                    We couldn&apos;t verify your last payment. Check the transaction ID and submit it again.
+                  </p>
                 )}
-              </div>
+                <div className={cn("mx-auto mt-12 grid max-w-3xl gap-6", offered.length > 1 && "md:grid-cols-2")}>
+                  {offered.map((pid) => {
+                    const pl = PLANS[pid]
+                    const featured = pid === "premium"
+                    return (
+                      <article key={pid} className={cn("relative flex flex-col rounded-2xl border bg-card p-6 shadow-card", featured ? "border-brand/50 shadow-glow" : "border-border")}>
+                        {featured && (
+                          <span className="absolute -top-3 left-6 inline-flex items-center gap-1 rounded-full bg-brand-gradient px-3 py-1 text-xs font-semibold text-primary-foreground">
+                            <Crown className="size-3" aria-hidden /> Best value
+                          </span>
+                        )}
+                        <h2 className="text-lg font-semibold">{pl.name}</h2>
+                        <p className="mt-1 text-sm text-muted-foreground">{pl.desc}</p>
+                        <p className="mt-5 flex items-baseline gap-2">
+                          <span className="text-4xl font-semibold tracking-tight">{pl.priceINR}</span>
+                          <span className="text-sm text-muted-foreground">≈ {pl.price}</span>
+                        </p>
+                        <ul className="mt-6 flex-1 space-y-3 text-sm">
+                          {pl.features.map((f) => (
+                            <li key={f.text} className="flex items-start gap-2.5">
+                              {f.ok ? <Check className="mt-0.5 size-4 shrink-0 text-brand" aria-hidden /> : <Minus className="mt-0.5 size-4 shrink-0 text-muted-foreground/50" aria-hidden />}
+                              <span className={f.ok ? "text-foreground/90" : "text-muted-foreground/70"}>
+                                {f.text}{!f.ok && <span className="sr-only"> (not included)</span>}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                        <Button className="mt-8 w-full" variant={featured ? "default" : "outline"} onClick={() => setSelected(pid)}>
+                          Pay {pl.priceINR} with UPI
+                        </Button>
+                      </article>
+                    )
+                  })}
+                </div>
+              </>
             )}
 
-            {/* Optimize controls */}
-            {tab === "optimize" && isPremium && (
-              <div className="side-section">
-                <p className="side-label">Optimize Code</p>
-                {!file ? (
-                  <div className="info-box">
-                    <span>📁</span>
-                    <p>Upload & analyze code first in the <strong>Analyze</strong> tab.</p>
+            <p className="mt-10 text-center text-sm">
+              {plan === "basic" ? (
+                <button type="button" onClick={() => setUpgrading(false)} className="text-brand underline-offset-4 hover:underline">Back to Dev Mode</button>
+              ) : (
+                <Link href="/ide" className="text-brand underline-offset-4 hover:underline">Continue with the free IDE</Link>
+              )}
+            </p>
+          </div>
+        </main>
+        {toast}
+      </div>
+    )
+  }
+
+  // ─── WORKSPACE ──────────────────────────────────────────────────────────────
+  const TABS: { id: Tab; label: string; icon: LucideIcon; locked: boolean }[] = [
+    { id: "generate", label: "Generate", icon: Sparkles, locked: false },
+    { id: "analyze", label: "Analyze", icon: ScanSearch, locked: false },
+    { id: "optimize", label: "Optimize", icon: RefreshCw, locked: !isPremium },
+  ]
+  const CARDS: [string, string, LucideIcon][] = [
+    ["Summary", "summary", FileCode2],
+    ["Complexity", "complexity", BarChart3],
+    ["Issues", "issues", AlertTriangle],
+    ["Security", "security", ShieldCheck],
+    ["Performance", "performance", Gauge],
+    ["Suggestions", "suggestions", Lightbulb],
+  ]
+  const label = "mb-2 block text-xs font-semibold uppercase tracking-widest text-muted-foreground"
+  const field = "w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+
+  const outActions = (txt: string, filename: string) => (
+    <div className="flex gap-2">
+      <Button size="sm" variant="outline" onClick={() => copy(txt)}>{copied ? <Check aria-hidden /> : <Copy aria-hidden />}{copied ? "Copied" : "Copy"}</Button>
+      <Button size="sm" variant="outline" onClick={() => downloadFile(txt, filename)}><Download aria-hidden />Save</Button>
+    </div>
+  )
+  return (
+    <div className="min-h-screen bg-background">
+      <Header />
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
+        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span className="size-2 animate-pulse-node rounded-full bg-success" aria-hidden />
+          Dev Mode · <span className="font-medium capitalize text-foreground">{plan}</span>
+        </p>
+        {plan === "basic" && <Button size="sm" variant="gradient" onClick={upgrade}>Upgrade to Premium</Button>}
+      </div>
+
+      <main id="main" className="mx-auto grid max-w-7xl gap-4 px-4 pb-10 sm:px-6 lg:grid-cols-[22rem_1fr]">
+        {/* Controls */}
+        <aside className="space-y-6 rounded-2xl border border-border bg-card p-5 shadow-card lg:self-start">
+          <div role="tablist" aria-label="Mode" className="grid grid-cols-3 gap-1 rounded-xl bg-background p-1">
+            {TABS.map(({ id, label: l, icon: Icon, locked }) => (
+              <button key={id} role="tab" aria-selected={tab === id} aria-disabled={locked} onClick={() => !locked && setTab(id)}
+                title={locked ? "Optimize is a Premium feature" : undefined}
+                className={cn("flex flex-col items-center gap-1 rounded-lg px-2 py-2 text-xs font-medium transition-colors",
+                  tab === id ? "bg-surface-elevated text-foreground ring-1 ring-border" : "text-muted-foreground hover:text-foreground",
+                  locked && "cursor-not-allowed opacity-50 hover:text-muted-foreground")}>
+                <Icon className="size-4" aria-hidden />{l}{locked && <span className="sr-only"> (Premium)</span>}
+              </button>
+            ))}
+          </div>
+
+          {tab === "generate" && (
+            <div>
+              <label htmlFor="gen-lang" className={label}>Language</label>
+              <select id="gen-lang" className={field} value={lang} onChange={(e) => setLang(e.target.value)}>
+                {["python","javascript","typescript","java","c","cpp","rust","go","csharp","ruby","php","swift","kotlin","bash"].map((l) => <option key={l} value={l}>{l}</option>)}
+              </select>
+              <label htmlFor="gen-prompt" className={cn(label, "mt-5")}>What should it build?</label>
+              <textarea id="gen-prompt" rows={7} className={cn(field, "resize-none")} value={prompt}
+                placeholder="e.g. An Express.js endpoint that authenticates users with JWT"
+                onChange={(e) => setPrompt(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) handleGenerate() }} />
+              <p className="mt-1.5 text-xs text-muted-foreground">Ctrl+Enter to run</p>
+              <Button className="mt-4 w-full" onClick={handleGenerate} disabled={loading || !prompt.trim()}>
+                {loading ? <><Loader2 className="animate-spin" aria-hidden />Generating…</> : <><Sparkles aria-hidden />Generate code</>}
+              </Button>
+            </div>
+          )}
+
+          {tab === "analyze" && (
+            <div>
+              <span className={label}>Code file</span>
+              <input ref={fileRef} id="dv-file" type="file" className="sr-only"
+                accept=".py,.js,.ts,.tsx,.jsx,.java,.cpp,.c,.cs,.rs,.go,.rb,.php,.swift,.kt,.r,.lua,.sh,.html,.css"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile(f) }} />
+              <div
+                onDragOver={(e) => { e.preventDefault(); setDrag(true) }}
+                onDragLeave={() => setDrag(false)}
+                onDrop={(e) => { e.preventDefault(); setDrag(false); const f = e.dataTransfer.files[0]; if (f) uploadFile(f) }}
+                className={cn("rounded-xl border-2 border-dashed p-5 text-center transition-colors", drag ? "border-brand bg-brand/10" : "border-input", file && "border-solid border-brand/30 bg-brand/5")}>
+                {file ? (
+                  <div className="flex items-center gap-3 text-left">
+                    <FileCode2 className="size-6 shrink-0 text-brand" aria-hidden />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{file.name}</p>
+                      <p className="text-xs text-muted-foreground">{file.language} · {file.content.split("\n").length} lines</p>
+                    </div>
+                    <button type="button" aria-label="Remove file" onClick={() => { setFile(null); setAnalysis(null); setOptimized("") }}
+                      className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"><X className="size-4" /></button>
                   </div>
                 ) : (
-                  <>
-                    <div className="mini-file">
-                      <span>📄 {file.name}</span>
-                      <span className="mini-lang">{file.language}</span>
-                    </div>
-                    {!analysis && (
-                      <div className="info-box" style={{ marginTop: "0.5rem" }}>
-                        <span>💡</span><p>Run <strong>Analyze</strong> first for better results.</p>
-                      </div>
-                    )}
-                    <button className="action-btn green-btn" onClick={handleOptimize} disabled={loading} style={{ marginTop: "0.75rem" }}>
-                      {loading ? <><span className="spin" />Optimizing…</> : <><span>⟳</span> Optimize Code</>}
-                    </button>
-                  </>
+                  <button type="button" onClick={() => fileRef.current?.click()} className="flex w-full flex-col items-center gap-1.5 rounded-lg py-2">
+                    <Upload className="size-6 text-brand" aria-hidden />
+                    <span className="text-sm font-medium">Drop a code file or click to browse</span>
+                    <span className="text-xs text-muted-foreground">Any common language</span>
+                  </button>
                 )}
               </div>
-            )}
-
-            {/* Memory indicator */}
-            <div className="mem-card">
-              <span className="mem-glyph">🧠</span>
-              <div>
-                <div className="mem-title">Memory: {isPremium ? "Permanent" : "24h only"}</div>
-                <div className="mem-sub">{isPremium ? "Sessions saved forever" : "Resets after 24 hours"}</div>
-              </div>
+              {file && (
+                <Button className="mt-4 w-full" onClick={handleAnalyze} disabled={loading}>
+                  {loading ? <><Loader2 className="animate-spin" aria-hidden />Analyzing…</> : <><ScanSearch aria-hidden />Analyze code</>}
+                </Button>
+              )}
             </div>
-          </aside>
+          )}
 
-          {/* OUTPUT PANEL */}
-          <main className="app-main">
-            {/* Generate output */}
-            {tab === "generate" && (
-              <div className="out-panel">
-                <div className="out-top">
-                  <div className="out-title"><span className="title-glyph amber">✦</span> Generated Code — <span className="lang-badge">{lang}</span></div>
-                  {generated && (
-                    <div className="out-acts">
-                      <button className="icon-btn" onClick={() => copy(generated)}>{copied ? "✓ Copied" : "⎘ Copy"}</button>
-                      <button className="icon-btn" onClick={() => downloadFile(generated, `generated.${lang === "python" ? "py" : lang === "javascript" ? "js" : lang}`)}>↓ Save</button>
-                    </div>
-                  )}
-                </div>
-                <div className="out-body">
-                  {loading && <LoadingSpinner color="#f59e0b" label={`Generating ${lang} code…`} />}
-                  {!loading && !generated && <EmptyState icon="✦" color="#f59e0b" text="Describe what you want to build" sub="Supports 14+ languages" />}
-                  {!loading && generated && <pre className="code-pre amber-pre"><code>{generated}</code></pre>}
-                </div>
-              </div>
-            )}
+          {tab === "optimize" && isPremium && (
+            <div>
+              <span className={label}>Optimize code</span>
+              {!file ? (
+                <p className="rounded-xl border border-border bg-background p-4 text-sm text-muted-foreground">Upload and analyze a file in the <strong className="text-foreground">Analyze</strong> tab first.</p>
+              ) : (
+                <>
+                  <p className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2 text-sm">
+                    <span className="truncate">{file.name}</span><span className="font-mono text-xs text-muted-foreground">{file.language}</span>
+                  </p>
+                  {!analysis && <p className="mt-3 text-xs text-muted-foreground">Tip: run Analyze first for better results.</p>}
+                  <Button className="mt-4 w-full" onClick={handleOptimize} disabled={loading}>
+                    {loading ? <><Loader2 className="animate-spin" aria-hidden />Optimizing…</> : <><RefreshCw aria-hidden />Optimize code</>}
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
 
-            {/* Analyze output */}
-            {tab === "analyze" && (
-              <div className="out-panel">
-                <div className="out-top">
-                  <div className="out-title"><span className="title-glyph blue">◎</span> Code Analysis</div>
-                </div>
-                <div className="out-body">
-                  {loading && <LoadingSpinner color="#58a6ff" label="Deep scanning your code…" />}
-                  {!loading && !analysis && !file && <EmptyState icon="◎" color="#58a6ff" text="Upload a code file to analyze" sub="Drag & drop any source file" />}
-                  {!loading && !analysis && file && <EmptyState icon="📄" color="#58a6ff" text={`${file.name} is ready`} sub="Click Analyze Code →" />}
-                  {!loading && analysis && !analysis.error && (
-                    <div className="analysis-cards">
-                      {[
-                        ["📋 Summary", "summary"],
-                        ["📊 Complexity", "complexity"],
-                        ["⚠️ Issues", "issues"],
-                        ["🔒 Security", "security"],
-                        ["⚡ Performance", "performance"],
-                        ["💡 Suggestions", "suggestions"],
-                      ].map(([label, key]) =>
-                        analysis[key] ? (
-                          <div key={key} className="a-card">
-                            <div className="a-card-title">{label}</div>
-                            <div className="a-card-body">{analysis[key]}</div>
-                          </div>
-                        ) : null
-                      )}
-                      {!isPremium && (
-                        <div className="upgrade-card">
-                          <span style={{ fontSize: "1.5rem" }}>🔒</span>
-                          <div>
-                            <strong>Want to optimize this code?</strong>
-                            <p>Upgrade to Premium to unlock AI-powered code optimization</p>
-                          </div>
-                          <button className="up-cta" onClick={() => { setPlan("none"); setPaywall(true) }}>Upgrade →</button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {!loading && analysis?.error && <div className="err-box">{analysis.error}</div>}
-                </div>
-              </div>
-            )}
+          <div className="flex items-center gap-3 rounded-xl border border-border bg-background p-3">
+            <Brain className="size-5 text-violet-soft" aria-hidden />
+            <div>
+              <p className="text-sm font-medium">Memory: {isPremium ? "Permanent" : "24 hours"}</p>
+              <p className="text-xs text-muted-foreground">{isPremium ? "Sessions are kept in this browser" : "Resets after 24 hours"}</p>
+            </div>
+          </div>
+        </aside>
 
-            {/* Optimize output */}
-            {tab === "optimize" && (
-              <div className="out-panel">
-                <div className="out-top">
-                  <div className="out-title"><span className="title-glyph green">⟳</span> Optimized Code</div>
-                  {optimized && (
-                    <div className="out-acts">
-                      <button className="icon-btn" onClick={() => copy(optimized)}>{copied ? "✓ Copied" : "⎘ Copy"}</button>
-                      <button className="icon-btn" onClick={() => downloadFile(optimized, `optimized_${file?.name || "code"}`)}>↓ Save</button>
-                    </div>
-                  )}
-                </div>
-                <div className="out-body">
-                  {loading && <LoadingSpinner color="#00ff88" label="AI is refactoring your code…" />}
-                  {!loading && !optimized && <EmptyState icon="⟳" color="#00ff88" text="Click Optimize Code to begin" sub="AI will refactor, clean, and improve performance" />}
-                  {!loading && optimized && <pre className="code-pre green-pre"><code>{optimized}</code></pre>}
-                </div>
-              </div>
-            )}
-          </main>
+        {/* Output */}
+        <div className="flex min-h-[28rem] flex-col rounded-2xl border border-border bg-surface shadow-card lg:min-h-[36rem]">
+          {tab === "generate" && (
+            <OutputPanel title={`Generated code · ${lang}`} icon={Sparkles} text={generated} actions={outActions(generated, `generated.${lang === "python" ? "py" : lang === "javascript" ? "js" : lang}`)}>
+              {loading ? <Busy text={`Generating ${lang} code…`} /> : !generated ? <Empty icon={Sparkles} text="Describe what you want to build" sub="Supports 14 languages" /> :
+                <pre className="whitespace-pre-wrap break-words font-mono text-[13px] leading-6"><code>{generated}</code></pre>}
+            </OutputPanel>
+          )}
+
+          {tab === "analyze" && (
+            <OutputPanel title="Error analysis" icon={ScanSearch}>
+              {loading ? <Busy text="Scanning your code…" /> :
+                analysis?.error ? <p role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">{analysis.error}</p> :
+                analysis ? (
+                  <div className="grid gap-4 xl:grid-cols-2">
+                    {CARDS.map(([title, key, Icon]) => analysis[key] ? (
+                      <article key={key} className={cn("rounded-xl border border-border bg-card p-4", (key === "summary" || key === "issues") && "xl:col-span-2")}>
+                        <h3 className="flex items-center gap-2 text-sm font-semibold"><Icon className="size-4 text-brand" aria-hidden />{title}</h3>
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{analysis[key]}</p>
+                      </article>
+                    ) : null)}
+                    {!isPremium && (
+                      <div className="flex flex-wrap items-center gap-4 rounded-xl border border-violet/30 bg-violet/10 p-4 xl:col-span-2">
+                        <Zap className="size-5 text-violet-soft" aria-hidden />
+                        <div className="min-w-0 flex-1 text-sm"><strong>Want this code optimized?</strong><p className="text-muted-foreground">Premium unlocks AI-powered optimization.</p></div>
+                        <Button size="sm" variant="gradient" onClick={upgrade}>Upgrade</Button>
+                      </div>
+                    )}
+                  </div>
+                ) : file ? <Empty icon={FileCode2} text={`${file.name} is ready`} sub="Choose Analyze code to begin" /> :
+                <Empty icon={ScanSearch} text="Upload a code file to analyze" sub="Drag and drop any source file" />}
+            </OutputPanel>
+          )}
+
+          {tab === "optimize" && (
+            <OutputPanel title="Optimized code" icon={RefreshCw} text={optimized} actions={outActions(optimized, `optimized_${file?.name || "code"}`)}>
+              {loading ? <Busy text="Refactoring your code…" /> : !optimized ? <Empty icon={RefreshCw} text="Choose Optimize code to begin" sub="The AI refactors for performance and clarity" /> :
+                <pre className="whitespace-pre-wrap break-words font-mono text-[13px] leading-6"><code>{optimized}</code></pre>}
+            </OutputPanel>
+          )}
         </div>
-      </div>
-      <GlobalStyles />
-    </>
-  )
-}
-
-function LoadingSpinner({ color, label }: { color: string; label: string }) {
-  return (
-    <div className="loading-wrap">
-      <div className="loading-ring" style={{ borderTopColor: color }} />
-      <p className="loading-label">{label}</p>
+      </main>
+      {toast}
     </div>
-  )
-}
-
-function EmptyState({ icon, color, text, sub }: { icon: string; color: string; text: string; sub: string }) {
-  return (
-    <div className="empty-wrap">
-      <div className="empty-icon" style={{ color }}>{icon}</div>
-      <p className="empty-text">{text}</p>
-      <span className="empty-sub">{sub}</span>
-    </div>
-  )
-}
-
-function GlobalStyles() {
-  return (
-    <style jsx global>{`
-      @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Syne:wght@700;800;900&display=swap');
-      *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
-      :root {
-        --bg:#050810; --s:#0c1120; --s2:#101828; --border:rgba(255,255,255,0.07);
-        --b2:rgba(255,255,255,0.12); --tx:#dce4f0; --tx2:#6b7a99;
-        --green:#00ff88; --amber:#f59e0b; --blue:#58a6ff; --red:#f85149;
-        --font:'Outfit',system-ui,sans-serif; --mono:'JetBrains Mono',monospace; --display:'Syne',sans-serif;
-      }
-      body { background:var(--bg); color:var(--tx); font-family:var(--font); overflow-x:hidden; }
-      select option { background: #0c1120; }
-
-      .dv-root { min-height:100vh; position:relative; }
-      .dv-app { display:flex; flex-direction:column; height:100vh; overflow:hidden; }
-
-      .mesh-bg {
-        position:fixed; inset:0; z-index:0; pointer-events:none;
-        background:
-          radial-gradient(ellipse 70% 50% at 5% 0%, rgba(0,255,136,.05) 0%, transparent 55%),
-          radial-gradient(ellipse 50% 40% at 95% 100%, rgba(88,166,255,.05) 0%, transparent 55%);
-      }
-
-      /* NAV */
-      .top-nav {
-        position:sticky; top:0; z-index:100; display:flex; align-items:center;
-        justify-content:space-between; padding:0 1.5rem; height:50px;
-        background:rgba(5,8,16,.9); backdrop-filter:blur(24px);
-        border-bottom:1px solid var(--border); flex-shrink:0;
-      }
-      .nav-brand { font-family:var(--display); font-size:.95rem; font-weight:900; text-decoration:none; color:var(--tx); letter-spacing:.06em; }
-      .brand-lt { color:var(--green); }
-      .nav-chip { background:rgba(0,255,136,.08); border:1px solid rgba(0,255,136,.18); color:var(--green); padding:.28rem .85rem; border-radius:100px; font-size:.75rem; font-weight:600; }
-      .nav-status { display:flex; align-items:center; gap:.45rem; font-size:.8rem; font-weight:500; }
-      .status-pulse { width:7px; height:7px; border-radius:50%; background:var(--green); animation:pulse 2s infinite; }
-      @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(1.6)} }
-      .nav-links-right { display:flex; align-items:center; gap:.75rem; }
-      .nav-ghost { color:var(--tx2); text-decoration:none; font-size:.8rem; transition:color .15s; }
-      .nav-ghost:hover { color:var(--tx); }
-      .upgrade-chip { background:linear-gradient(135deg,#f59e0b,#f97316); color:#050810; border:none; padding:.3rem .85rem; border-radius:100px; font-size:.75rem; font-weight:700; cursor:pointer; transition:all .2s; }
-      .upgrade-chip:hover { transform:translateY(-1px); box-shadow:0 4px 16px rgba(245,158,11,.3); }
-
-      /* PAYWALL */
-      .pw-wrap { position:relative; z-index:1; max-width:840px; margin:0 auto; padding:4rem 1.5rem; }
-      .pw-eyebrow { text-align:center; margin-bottom:1.5rem; }
-      .terminal-strip { display:inline-flex; align-items:center; gap:.5rem; background:var(--s); border:1px solid var(--b2); padding:.4rem 1rem; border-radius:8px; font-family:var(--mono); font-size:.78rem; color:var(--tx2); }
-      .dot { width:10px; height:10px; border-radius:50%; display:block; }
-      .dot.r{background:#ff5f57;} .dot.y{background:#febc2e;} .dot.g{background:#28c840;}
-      .pw-h1 { font-family:var(--display); font-size:clamp(2.8rem,6vw,4.5rem); font-weight:900; text-align:center; line-height:1.05; margin-bottom:1rem; letter-spacing:-.02em; }
-      .pw-em { font-style:normal; color:var(--green); }
-      .pw-p { text-align:center; color:var(--tx2); font-size:1rem; margin-bottom:3rem; line-height:1.6; }
-
-      .plans-duo { display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; margin-bottom:2rem; }
-      .plan-card { background:var(--s); border:1px solid var(--b2); border-radius:20px; padding:2rem 1.75rem; position:relative; transition:all .3s; overflow:hidden; }
-      .plan-card::after { content:''; position:absolute; inset:0; background:radial-gradient(ellipse at top left,rgba(0,255,136,.03) 0%,transparent 60%); pointer-events:none; }
-      .plan-card:hover { transform:translateY(-5px); box-shadow:0 24px 80px rgba(0,0,0,.5); }
-      .plan-premium { border-color:rgba(0,255,136,.28); }
-      .best-badge { position:absolute; top:14px; right:14px; background:rgba(0,255,136,.1); border:1px solid rgba(0,255,136,.25); color:var(--green); font-size:.68rem; font-weight:700; padding:3px 10px; border-radius:100px; }
-      .plan-glyph { font-size:1.8rem; margin-bottom:.75rem; }
-      .plan-h3 { font-family:var(--display); font-size:1rem; font-weight:800; margin-bottom:.5rem; letter-spacing:.04em; }
-      .plan-pricing { display:flex; align-items:baseline; gap:3px; margin-bottom:.5rem; flex-wrap:wrap; }
-      .plan-big { font-family:var(--display); font-size:2.4rem; font-weight:900; }
-      .plan-sep { color:var(--tx2); }
-      .plan-inr { font-size:1.1rem; font-weight:600; color:var(--tx2); }
-      .plan-mo { font-size:.75rem; color:var(--tx2); margin-left:2px; }
-      .plan-blurb { color:var(--tx2); font-size:.8rem; margin-bottom:1.2rem; padding-bottom:1.2rem; border-bottom:1px solid var(--border); line-height:1.55; }
-      .feat-list { list-style:none; display:flex; flex-direction:column; gap:.5rem; margin-bottom:1.5rem; }
-      .feat-list li { display:flex; align-items:center; gap:.5rem; font-size:.82rem; }
-      .f-yes { color:var(--tx); } .f-no { color:var(--tx2); }
-      .f-bullet { width:16px; font-size:.72rem; font-weight:700; flex-shrink:0; }
-      .f-yes .f-bullet { color:var(--green); } .f-no .f-bullet { color:var(--red); }
-      .f-italic { font-style:italic; }
-      .pay-btn { display:flex; align-items:center; justify-content:center; gap:.5rem; width:100%; padding:.85rem; border:none; border-radius:12px; font-family:var(--font); font-size:.88rem; font-weight:700; cursor:pointer; transition:all .2s; }
-      .pay-btn:hover:not(:disabled) { transform:translateY(-2px); box-shadow:0 8px 28px rgba(0,0,0,.4); filter:brightness(1.1); }
-      .pay-btn:disabled { opacity:.65; cursor:not-allowed; }
-
-      .trust-row { display:flex; justify-content:center; align-items:center; gap:.75rem; color:var(--tx2); font-size:.75rem; flex-wrap:wrap; margin-top:1rem; }
-      .bull { opacity:.4; }
-
-      .toast { position:fixed; top:60px; left:50%; transform:translateX(-50%); background:rgba(0,255,136,.12); border:1px solid rgba(0,255,136,.3); color:var(--green); padding:.6rem 1.5rem; border-radius:100px; font-size:.85rem; font-weight:600; z-index:200; animation:tin .4s ease; }
-      @keyframes tin { from{opacity:0;top:44px} to{opacity:1;top:60px} }
-
-      /* APP SHELL */
-      .app-shell { display:grid; grid-template-columns:280px 1fr; flex:1; overflow:hidden; position:relative; z-index:1; }
-
-      /* SIDEBAR */
-      .app-side { background:var(--s); border-right:1px solid var(--border); display:flex; flex-direction:column; padding:1rem; gap:.75rem; overflow-y:auto; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
-      .side-section { display:flex; flex-direction:column; gap:.5rem; }
-      .side-label { font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:var(--tx2); padding-left:2px; }
-      .side-tabs { display:flex; flex-direction:column; gap:3px; }
-      .side-tab { display:flex; align-items:center; gap:.55rem; padding:.6rem .8rem; border:1px solid transparent; background:transparent; color:var(--tx2); border-radius:9px; font-family:var(--font); font-size:.85rem; font-weight:500; cursor:pointer; transition:all .15s; text-align:left; }
-      .side-tab:hover:not(.side-tab-locked) { background:var(--s2); color:var(--tx); }
-      .side-tab-on { background:var(--s2); border-color:var(--b2); color:var(--tx); }
-      .side-tab-locked { opacity:.5; cursor:not-allowed; }
-      .side-tab-icon { font-size:.95rem; width:18px; text-align:center; }
-      .lock-chip { margin-left:auto; background:rgba(245,158,11,.1); color:var(--amber); border:1px solid rgba(245,158,11,.25); font-size:.62rem; font-weight:700; padding:1px 6px; border-radius:4px; }
-
-      .ctrl-sel { background:var(--s2); border:1px solid var(--b2); color:var(--tx); padding:.5rem .7rem; border-radius:8px; font-family:var(--font); font-size:.83rem; outline:none; cursor:pointer; width:100%; }
-      .ctrl-sel:focus { border-color:var(--green); }
-      .ctrl-ta { background:var(--s2); border:1px solid var(--b2); color:var(--tx); padding:.6rem .7rem; border-radius:8px; font-family:var(--font); font-size:.8rem; resize:vertical; outline:none; line-height:1.55; width:100%; }
-      .ctrl-ta:focus { border-color:rgba(0,255,136,.3); }
-      .ctrl-ta::placeholder { color:var(--tx2); }
-      .ctrl-hint { font-size:.66rem; color:var(--tx2); }
-
-      .action-btn { display:flex; align-items:center; justify-content:center; gap:.45rem; padding:.7rem; border:none; border-radius:10px; font-family:var(--font); font-size:.85rem; font-weight:700; cursor:pointer; transition:all .2s; margin-top:.25rem; }
-      .action-btn:hover:not(:disabled) { transform:translateY(-1px); }
-      .action-btn:disabled { opacity:.6; cursor:not-allowed; }
-      .amber-btn { background:var(--amber); color:#050810; }
-      .amber-btn:hover:not(:disabled) { box-shadow:0 5px 18px rgba(245,158,11,.35); }
-      .blue-btn { background:var(--blue); color:#050810; }
-      .blue-btn:hover:not(:disabled) { box-shadow:0 5px 18px rgba(88,166,255,.35); }
-      .green-btn { background:var(--green); color:#050810; }
-      .green-btn:hover:not(:disabled) { box-shadow:0 5px 18px rgba(0,255,136,.35); }
-
-      .dropzone { border:2px dashed var(--b2); border-radius:12px; padding:1.2rem 1rem; cursor:pointer; transition:all .2s; }
-      .dropzone:hover { border-color:var(--blue); background:rgba(88,166,255,.03); }
-      .dz-over { border-color:var(--green)!important; background:rgba(0,255,136,.04)!important; }
-      .dz-has-file { border-style:solid; border-color:rgba(0,255,136,.25); background:rgba(0,255,136,.03); }
-      .dz-empty { display:flex; flex-direction:column; align-items:center; gap:.35rem; text-align:center; }
-      .dz-icon { font-size:1.4rem; color:var(--tx2); }
-      .dz-text { font-size:.82rem; font-weight:500; }
-      .dz-sub { font-size:.7rem; color:var(--tx2); }
-      .file-row { display:flex; align-items:center; gap:.6rem; width:100%; }
-      .file-nm { font-size:.8rem; font-weight:600; color:var(--green); word-break:break-all; }
-      .file-mt { font-size:.7rem; color:var(--tx2); font-family:var(--mono); }
-      .file-x { background:none; border:none; color:var(--tx2); cursor:pointer; font-size:.82rem; transition:color .15s; flex-shrink:0; }
-      .file-x:hover { color:var(--red); }
-
-      .info-box { background:var(--s2); border:1px solid var(--border); border-radius:9px; padding:.75rem; display:flex; gap:.5rem; font-size:.8rem; color:var(--tx2); line-height:1.5; }
-      .info-box strong { color:var(--tx); }
-      .mini-file { display:flex; justify-content:space-between; font-size:.75rem; color:var(--tx2); font-family:var(--mono); background:var(--s2); padding:.45rem .7rem; border-radius:7px; }
-      .mini-lang { color:var(--green); font-weight:600; }
-
-      .mem-card { margin-top:auto; display:flex; align-items:center; gap:.6rem; background:var(--s2); border:1px solid var(--border); border-radius:10px; padding:.7rem; }
-      .mem-glyph { font-size:1rem; }
-      .mem-title { font-size:.78rem; font-weight:600; }
-      .mem-sub { font-size:.68rem; color:var(--tx2); }
-
-      /* OUTPUT */
-      .app-main { display:flex; flex-direction:column; overflow:hidden; }
-      .out-panel { display:flex; flex-direction:column; height:100%; }
-      .out-top { display:flex; align-items:center; justify-content:space-between; padding:.8rem 1.25rem; border-bottom:1px solid var(--border); background:var(--s); flex-shrink:0; }
-      .out-title { display:flex; align-items:center; gap:.5rem; font-size:.88rem; font-weight:600; }
-      .title-glyph { font-size:1rem; }
-      .title-glyph.amber { color:var(--amber); } .title-glyph.blue { color:var(--blue); } .title-glyph.green { color:var(--green); }
-      .lang-badge { background:rgba(245,158,11,.1); color:var(--amber); font-size:.72rem; font-weight:700; padding:2px 8px; border-radius:4px; font-family:var(--mono); }
-      .out-acts { display:flex; gap:.5rem; }
-      .icon-btn { background:var(--s2); border:1px solid var(--b2); color:var(--tx2); padding:.28rem .75rem; border-radius:6px; font-size:.75rem; font-family:var(--mono); cursor:pointer; transition:all .15s; }
-      .icon-btn:hover { color:var(--tx); border-color:var(--green); }
-      .out-body { flex:1; overflow-y:auto; padding:1.25rem; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
-
-      /* States */
-      .loading-wrap { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; gap:1.25rem; }
-      .loading-ring { width:52px; height:52px; border:3px solid var(--border); border-top-color:var(--amber); border-radius:50%; animation:spin .75s linear infinite; }
-      @keyframes spin { to{transform:rotate(360deg)} }
-      .loading-label { font-size:.85rem; color:var(--tx2); }
-      .empty-wrap { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; gap:.5rem; text-align:center; }
-      .empty-icon { font-size:2.8rem; margin-bottom:.25rem; }
-      .empty-text { font-size:.95rem; font-weight:600; color:var(--tx); }
-      .empty-sub { font-size:.82rem; color:var(--tx2); }
-
-      .code-pre { background:#080b14; border:1px solid var(--border); border-radius:12px; padding:1.25rem; font-family:var(--mono); font-size:.8rem; line-height:1.75; color:#a8b8cc; overflow-x:auto; white-space:pre-wrap; word-break:break-word; }
-      .amber-pre { border-color:rgba(245,158,11,.18); }
-      .green-pre { border-color:rgba(0,255,136,.18); color:#b0ffd4; }
-
-      /* Analysis */
-      .analysis-cards { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
-      .a-card { background:var(--s); border:1px solid var(--border); border-radius:12px; padding:1rem; }
-      .a-card-title { font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--tx2); margin-bottom:.5rem; }
-      .a-card-body { font-size:.8rem; color:var(--tx); line-height:1.65; white-space:pre-wrap; }
-      .upgrade-card { grid-column:1/-1; display:flex; align-items:center; gap:1rem; background:rgba(0,255,136,.04); border:1px solid rgba(0,255,136,.2); border-radius:12px; padding:1rem; }
-      .upgrade-card strong { font-size:.88rem; display:block; margin-bottom:.2rem; }
-      .upgrade-card p { font-size:.78rem; color:var(--tx2); }
-      .up-cta { margin-left:auto; background:var(--green); color:#050810; border:none; padding:.5rem 1rem; border-radius:8px; font-weight:700; font-size:.8rem; cursor:pointer; white-space:nowrap; transition:all .2s; }
-      .up-cta:hover { transform:translateY(-1px); box-shadow:0 4px 14px rgba(0,255,136,.3); }
-      .err-box { color:var(--red); background:rgba(248,81,73,.06); border:1px solid rgba(248,81,73,.2); padding:1rem; border-radius:10px; font-size:.85rem; }
-
-      .spin { width:13px; height:13px; border:2px solid rgba(0,0,0,.25); border-top-color:#050810; border-radius:50%; animation:spin .6s linear infinite; display:inline-block; }
-
-      @media (max-width:768px) {
-        .app-shell { grid-template-columns:1fr; }
-        .plans-duo { grid-template-columns:1fr; }
-        .analysis-cards { grid-template-columns:1fr; }
-      }
-    `}</style>
   )
 }

@@ -14,6 +14,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@clerk/nextjs/server"
+import { getDevmodePlan } from "@/lib/devmode-plan"
 
 const AI_URL = process.env.ERRORLESS_AI_URL ?? "http://localhost:8000"
 
@@ -29,9 +30,13 @@ export async function POST(req: NextRequest) {
   // Auth check
   const { userId } = await auth()
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const plan = await getDevmodePlan(userId)
+  if (plan === "none") {
+    return NextResponse.json({ error: "A Dev Mode plan is required.", upgrade: true }, { status: 402 })
+  }
 
   const body = await req.json()
-  const { mode = "generate", plan = "basic" } = body
+  const { mode = "generate" } = body
 
   // Plan gate: optimize & agent require premium
   if ((mode === "optimize" || mode === "agent") && plan !== "premium") {
@@ -50,7 +55,7 @@ export async function POST(req: NextRequest) {
     const aiResp = await fetch(`${AI_URL}${endpoint}`, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ ...body, userId }),
+      body:    JSON.stringify({ ...body, plan, userId }),
       signal:  AbortSignal.timeout(90_000),  // 90s for agent mode
     })
 
@@ -67,6 +72,9 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const { userId } = await auth()
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if ((await getDevmodePlan(userId)) === "none") {
+    return NextResponse.json({ error: "A Dev Mode plan is required.", upgrade: true }, { status: 402 })
+  }
 
   const { searchParams } = req.nextUrl
   const prompt   = searchParams.get("prompt") ?? ""

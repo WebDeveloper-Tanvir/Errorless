@@ -1,19 +1,23 @@
 import type React from "react"
 import type { Metadata, Viewport } from "next"
+import { Inter, JetBrains_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { ClerkClientProvider } from "@/components/clerk-provider"
 import { ConvexClientProvider } from "@/components/convex-provider"
 import "./globals.css"
 
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" })
+const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains-mono", display: "swap" })
+
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 5,
-  themeColor: "#030e09",
+  themeColor: "#080d18",
 }
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://your-app.vercel.app"),
+  metadataBase: new URL("https://errorless.dev"),
   title: "Errorless - AI-Powered Code Error Solver | Real-Time Debugging",
   description:
     "Errorless is an AI-powered code error solver that provides context-aware live error detection and fixes. Collaborate with your team, share fixes, and build better code faster.",
@@ -60,7 +64,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
       <head>
         {/* Favicon */}
         <link rel="icon" href="/favicon.ico" sizes="any" />
@@ -69,7 +73,6 @@ export default function RootLayout({
         <link rel="shortcut icon" href="/favicon.ico" />
 
         {/* Brand theme color */}
-        <meta name="theme-color" content="#030e09" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -85,13 +88,11 @@ export default function RootLayout({
               description: "AI-powered code error solver with real-time debugging and team collaboration",
               url: "https://errorless.dev",
               applicationCategory: "DeveloperApplication",
-              offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
-              aggregateRating: { "@type": "AggregateRating", ratingValue: "4.8", ratingCount: "1250" },
             }),
           }}
         />
       </head>
-      <body className="antialiased">
+      <body>
         <ClerkClientProvider>
           <ConvexClientProvider>
             {children}
