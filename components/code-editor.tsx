@@ -2,105 +2,87 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Play, Copy, Download, Menu, X } from "lucide-react"
+import { Check, Copy, Download } from "lucide-react"
 
-export function CodeEditor() {
-  const [code, setCode] = useState(`function helloWorld() {
-  console.log("Hello, World!")
-  return 42
+export const EDITOR_LANGUAGES = [
+  { value: "javascript", label: "JavaScript", ext: "js" },
+  { value: "typescript", label: "TypeScript", ext: "ts" },
+  { value: "python", label: "Python", ext: "py" },
+  { value: "java", label: "Java", ext: "java" },
+] as const
+
+export type EditorLanguage = (typeof EDITOR_LANGUAGES)[number]["value"]
+
+interface CodeEditorProps {
+  code: string
+  language: EditorLanguage
+  onCodeChange: (code: string) => void
+  onLanguageChange: (language: EditorLanguage) => void
 }
 
-helloWorld()`)
+export function CodeEditor({ code, language, onCodeChange, onLanguageChange }: CodeEditorProps) {
+  const [copied, setCopied] = useState(false)
+  const ext = EDITOR_LANGUAGES.find((l) => l.value === language)?.ext ?? "txt"
 
-  const [language, setLanguage] = useState("javascript")
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(code)
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(code)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1800)
+    } catch {
+      /* clipboard unavailable (insecure context / permission denied) */
+    }
   }
 
   const handleDownload = () => {
-    const element = document.createElement("a")
-    const file = new Blob([code], { type: "text/plain" })
-    element.href = URL.createObjectURL(file)
-    element.download = `code.${language === "javascript" ? "js" : "py"}`
-    document.body.appendChild(element)
-    element.click()
-    document.body.removeChild(element)
+    const url = URL.createObjectURL(new Blob([code], { type: "text/plain" }))
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `code.${ext}`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
   }
 
   return (
-    <div className="flex-1 flex flex-col border-r border-border">
-      {/* Header */}
-      <div className="flex items-center justify-between p-3 md:p-4 border-b border-border bg-card gap-2 flex-wrap md:flex-nowrap">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-surface px-3 py-2.5 md:px-4">
         <div className="flex items-center gap-2">
+          <label htmlFor="editor-language" className="sr-only">Language</label>
           <select
+            id="editor-language"
             value={language}
-            onChange={(e) => setLanguage(e.target.value)}
-            className="px-2 md:px-3 py-2 bg-input border border-border rounded-md text-xs md:text-sm text-foreground"
+            onChange={(e) => onLanguageChange(e.target.value as EditorLanguage)}
+            className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground"
           >
-            <option value="javascript">JavaScript</option>
-            <option value="python">Python</option>
-            <option value="typescript">TypeScript</option>
-            <option value="jsx">JSX</option>
+            {EDITOR_LANGUAGES.map((l) => (
+              <option key={l.value} value={l.value}>{l.label}</option>
+            ))}
           </select>
+          <span className="hidden font-mono text-xs text-muted-foreground sm:inline">code.{ext}</span>
         </div>
-
-        {/* Desktop Actions */}
-        <div className="hidden md:flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleCopy} className="gap-2 bg-transparent">
-            <Copy className="w-4 h-4" />
-            Copy
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleCopy}>
+            {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
+            {copied ? "Copied" : "Copy"}
           </Button>
-          <Button variant="outline" size="sm" onClick={handleDownload} className="gap-2 bg-transparent">
-            <Download className="w-4 h-4" />
+          <Button variant="outline" size="sm" onClick={handleDownload}>
+            <Download aria-hidden />
             Download
           </Button>
-          <Button size="sm" className="gap-2 bg-primary hover:bg-primary/90">
-            <Play className="w-4 h-4" />
-            Run
-          </Button>
         </div>
-
-        {/* Mobile Menu Button */}
-        <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="md:hidden p-2 hover:bg-muted rounded-md">
-          {mobileMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
-        </button>
       </div>
 
-      {/* Mobile Actions */}
-      {mobileMenuOpen && (
-        <div className="md:hidden flex gap-2 p-3 border-b border-border bg-muted/50 flex-wrap">
-          <Button variant="outline" size="sm" onClick={handleCopy} className="gap-2 bg-transparent flex-1 min-w-fit">
-            <Copy className="w-4 h-4" />
-            Copy
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleDownload}
-            className="gap-2 bg-transparent flex-1 min-w-fit"
-          >
-            <Download className="w-4 h-4" />
-            Download
-          </Button>
-          <Button size="sm" className="gap-2 bg-primary hover:bg-primary/90 flex-1 min-w-fit">
-            <Play className="w-4 h-4" />
-            Run
-          </Button>
-        </div>
-      )}
-
-      {/* Editor */}
-      <div className="flex-1 overflow-hidden">
-        <textarea
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          className="w-full h-full p-3 md:p-4 bg-background text-foreground font-mono text-xs md:text-sm resize-none focus:outline-none border-none"
-          placeholder="Enter your code here..."
-          spellCheck="false"
-        />
-      </div>
+      <label htmlFor="editor-code" className="sr-only">Code</label>
+      <textarea
+        id="editor-code"
+        value={code}
+        onChange={(e) => onCodeChange(e.target.value)}
+        spellCheck={false}
+        placeholder="Paste or type code to analyze…"
+        className="scrollbar-thin min-h-64 w-full flex-1 resize-none bg-background p-4 font-mono text-[13px] leading-6 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      />
     </div>
   )
 }
