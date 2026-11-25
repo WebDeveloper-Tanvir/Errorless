@@ -106,7 +106,7 @@ export function ViralGrowthGate({ feature, onUnlock, onClose }: GateProps) {
 
         {/* Benefits */}
         <div className="bg-muted/50 rounded-lg p-4 mb-6">
-          <h3 className="text-sm font-semibold text-foreground mb-3">What you'll unlock:</h3>
+          <h3 className="text-sm font-semibold text-foreground mb-3">What you&apos;ll unlock:</h3>
           <ul className="space-y-2 text-xs md:text-sm text-muted-foreground">
             <li className="flex items-center gap-2">
               <span className="w-1.5 h-1.5 bg-primary rounded-full flex-shrink-0" />

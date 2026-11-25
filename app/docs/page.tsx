@@ -56,7 +56,7 @@ export default function DocsPage() {
             </nav>
           </aside>
 
-          <article className="max-w-3xl space-y-14 text-[15px] leading-relaxed text-muted-foreground [&_code]:rounded [&_code]:bg-white/5 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[13px] [&_code]:text-foreground [&_h3]:text-foreground [&_strong]:text-foreground">
+          <article className="min-w-0 max-w-3xl space-y-14 text-[15px] leading-relaxed text-muted-foreground [&_code]:rounded [&_code]:bg-white/5 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[13px] [&_code]:text-foreground [&_h3]:text-foreground [&_strong]:text-foreground">
             <header>
               <p className="font-mono text-xs uppercase tracking-[0.18em] text-brand">Documentation</p>
               <h1 className="mt-3 text-4xl font-semibold tracking-tight text-foreground">Using Errorless</h1>
@@ -82,7 +82,7 @@ export default function DocsPage() {
                 Every finding has a severity (error, warning or suggestion), a line number, the rule that fired and,
                 where possible, a suggested fix. Each file also gets a 0–100 quality score. Examples of the rules:
               </p>
-              <div className="overflow-hidden rounded-xl border border-border">
+              <div className="overflow-x-auto rounded-xl border border-border">
                 <table className="w-full text-left text-sm">
                   <thead className="bg-surface-elevated text-foreground">
                     <tr>
@@ -94,7 +94,7 @@ export default function DocsPage() {
                     {RULES.map((r) => (
                       <tr key={r.lang}>
                         <th scope="row" className="whitespace-nowrap px-4 py-3 align-top font-medium text-foreground">{r.lang}</th>
-                        <td className="px-4 py-3 font-mono text-xs">{r.rules}</td>
+                        <td className="min-w-64 px-4 py-3 font-mono text-xs">{r.rules}</td>
                       </tr>
                     ))}
                   </tbody>

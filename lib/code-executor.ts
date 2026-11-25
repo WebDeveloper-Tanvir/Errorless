@@ -66,6 +66,7 @@ export class CodeExecutor {
         success: true,
         output: result,
         executionTime: Math.round(executionTime),
+        problems: [],
       }
     } catch (error) {
       const executionTime = performance.now() - startTime
@@ -74,6 +75,7 @@ export class CodeExecutor {
         output: "",
         error: error instanceof Error ? error.message : "Unknown error",
         executionTime: Math.round(executionTime),
+        problems: [],
       }
     }
   }

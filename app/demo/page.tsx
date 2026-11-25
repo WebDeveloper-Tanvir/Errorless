@@ -55,6 +55,7 @@ export default function DemoPage() {
       {showGate && (
         <ViralGrowthGate
           feature="Advanced Error Analysis"
+          onClose={() => setShowGate(false)}
           onUnlock={() => {
             setShowGate(false)
             setUnlocked(true)
