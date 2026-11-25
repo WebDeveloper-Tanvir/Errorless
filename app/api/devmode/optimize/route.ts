@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
+import { auth } from "@clerk/nextjs/server"
 
 const GEMINI_KEY = process.env.GEMINI_API_KEY || ""
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`
 
 export async function POST(req: NextRequest) {
+  const { userId } = await auth()
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
   try {
     const { code, language, analysis } = await req.json()
 
