@@ -123,7 +123,8 @@ test("normalize: 'confirmed' without verified evidence is downgraded; executed i
 
 test("normalize: fix identical to input is dropped; out-of-range change lines are dropped; garbage is safe", () => {
   const same = normalizeResult({ rootCause: { statement: "s", certainty: "likely", basis: "" }, fix: { summary: "s", changes: [], steps: [], risk: "low", correctedCode: CODE } }, ctx)
-  assert.equal(same.fix, null)
+  assert.equal(same.fix?.correctedCode, "", "identical code is not offered as a fix")
+  assert.ok(same.warnings.some((w) => w.includes("identical")))
   const f = normalizeResult(
     { rootCause: { statement: "s", certainty: "likely", basis: "" }, fix: { summary: "s", changes: [{ line: 99, description: "d" }, { line: 2, description: "d2" }], steps: ["1"], risk: "bogus", correctedCode: CODE.replace("items.map", "(items ?? []).map") } },
     ctx,

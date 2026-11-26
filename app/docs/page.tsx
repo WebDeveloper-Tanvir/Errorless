@@ -121,12 +121,14 @@ export default function DocsPage() {
             <section className="space-y-4">
               <H2 id="debug-workspace">AI debug workspace</H2>
               <p>
-                Paste an error message, optionally add the code and context, choose a language and framework, then press
+                Paste an error message, stack trace, log, or an API, database, Docker or dependency error. Optionally add code or a config file and context. Language and framework are detected automatically unless you choose them. Then press
                 <strong> Analyze error</strong> (<code>Ctrl/⌘ + Enter</code>). You can paste from the clipboard, upload an error log or a code file,
                 load an example or clear everything. The answer streams in as it is written.
               </p>
               <ul className="list-disc space-y-2 pl-5">
-                <li><strong>Root cause</strong> is labelled Confirmed, Likely or Hypothesis. Confirmed requires evidence found in your input.</li>
+                <li>Every answer has nine sections: error summary, root cause, supporting evidence, confidence level, recommended fix, corrected code, explanation of changes, verification steps and prevention tips.</li>
+                <li><strong>Root cause</strong> is labelled Confirmed, Likely or Hypothesis, and kept separate from the symptoms. Confirmed requires evidence found in your input. When evidence is thin you get several possible causes with a check for each.</li>
+                <li><strong>Confidence</strong> is calculated from how much of the evidence was found in your input, not stated by the AI.</li>
                 <li><strong>Evidence</strong> quotes your error or code. Quotes that cannot be found in your input are flagged and shown without a line number.</li>
                 <li><strong>Suggested fix</strong> is the smallest change that addresses the cause, with a before/after diff and a Copy fix button. Your code is never changed automatically.</li>
                 <li><strong>How to verify</strong> lists commands for you to run. Errorless does not execute code or commands.</li>

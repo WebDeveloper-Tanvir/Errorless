@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { AlertTriangle, Check, CheckCircle2, Copy, HelpCircle, Lightbulb, RefreshCw, SearchCheck, ShieldAlert, Terminal, ThumbsDown, ThumbsUp, Wrench } from "lucide-react"
+import { AlertTriangle, Check, CheckCircle2, Code2, Copy, Gauge, GitBranch, HelpCircle, Lightbulb, ListChecks, ListOrdered, RefreshCw, SearchCheck, ShieldAlert, ShieldCheck, Terminal, ThumbsDown, ThumbsUp, Wrench } from "lucide-react"
 import type { Certainty, DebugResult } from "@/lib/debug/types"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -13,6 +13,12 @@ const CERTAINTY: Record<Certainty, { label: string; hint: string; cls: string }>
   likely: { label: "Likely", hint: "Probable, but not fully proven by the input", cls: "border-amber-500/40 bg-amber-500/10 text-amber-300" },
   hypothesis: { label: "Hypothesis", hint: "A reasoned guess. Verify before acting", cls: "border-secondary/50 bg-secondary/10 text-violet-300" },
 }
+
+const CONFIDENCE = {
+  high: { label: "High", bars: 3, cls: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300", bar: "bg-emerald-400" },
+  medium: { label: "Medium", bars: 2, cls: "border-amber-500/40 bg-amber-500/10 text-amber-300", bar: "bg-amber-400" },
+  low: { label: "Low", bars: 1, cls: "border-secondary/50 bg-secondary/10 text-violet-300", bar: "bg-violet-400" },
+} as const
 
 function Card({ title, icon: Icon, children, className }: { title: string; icon: typeof Wrench; children: React.ReactNode; className?: string }) {
   return (
@@ -75,6 +81,13 @@ export function ResultsPanel({ result, partial, originalCode, language, framewor
     setVote(ok ? "sent" : "failed")
   }
 
+  const conf = r.confidence?.level ? CONFIDENCE[r.confidence.level] : null
+  const det = r.detected
+  const KIND_LABEL: Record<string, string> = {
+    error_message: "error message", stack_trace: "stack trace", source_code: "source code", logs: "logs", config: "config file",
+    api_error: "API error", database_error: "database error", docker_error: "Docker error", dependency_error: "dependency error",
+  }
+
   return (
     <div className="space-y-4" aria-busy={streaming}>
       {r.status === "needs_context" && (
@@ -84,8 +97,42 @@ export function ResultsPanel({ result, partial, originalCode, language, framewor
         </div>
       )}
 
+      {/* 1. Error summary */}
+      {(r.summary?.headline || r.summary?.symptoms?.length) && (
+        <Card title="1. Error summary" icon={ListChecks}>
+          <div className="mb-2 flex flex-wrap gap-1.5 text-xs">
+            {det?.language && det.language !== "unknown" && (
+              <span className="rounded bg-surface-elevated px-2 py-0.5 font-mono text-foreground" title={`Language (${det.source})`}>
+                {det.language}{det.source !== "user" && det.source !== "unknown" ? " · detected" : ""}
+              </span>
+            )}
+            {det?.framework && <span className="rounded bg-surface-elevated px-2 py-0.5 font-mono text-foreground">{det.framework}</span>}
+            {(r.summary?.inputKinds ?? []).map((k) => (
+              <span key={k} className="rounded border border-border px-2 py-0.5 text-muted-foreground">{KIND_LABEL[k] ?? k}</span>
+            ))}
+          </div>
+          {r.summary?.headline && <p className="text-sm font-medium leading-6 text-foreground">{r.summary.headline}</p>}
+          {(r.summary?.symptoms?.length ?? 0) > 0 && (
+            <>
+              <p className="mt-2 text-xs uppercase tracking-wide text-muted-foreground">Symptoms (what you see, not the cause)</p>
+              <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-muted-foreground marker:text-primary">
+                {r.summary!.symptoms.map((x, i) => <li key={i}>{x}</li>)}
+              </ul>
+            </>
+          )}
+          {(r.dependencyIssues?.length ?? 0) > 0 && (
+            <ul className="mt-3 space-y-1 border-t border-border pt-3 text-sm">
+              {r.dependencyIssues!.map((d, i) => (
+                <li key={i}><code className="font-mono text-primary">{d.name}</code> <span className="text-muted-foreground">{d.problem}</span></li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      )}
+
+      {/* 2. Root cause */}
       {r.rootCause?.statement && (
-        <Card title="Root cause" icon={SearchCheck}>
+        <Card title="2. Root cause" icon={SearchCheck}>
           <div className="mb-2 flex flex-wrap items-center gap-2">
             {cert && (
               <span title={cert.hint} className={cn("rounded-full border px-2.5 py-0.5 text-xs font-medium", cert.cls)}>
@@ -96,12 +143,13 @@ export function ResultsPanel({ result, partial, originalCode, language, framewor
           </div>
           <p className="text-sm leading-6 text-foreground">{r.rootCause.statement}</p>
           {r.rootCause.basis && <p className="mt-2 text-sm leading-6 text-muted-foreground">Basis: {r.rootCause.basis}</p>}
-          {r.explanation && <p className="mt-3 border-t border-border pt-3 text-sm leading-6 text-muted-foreground">{r.explanation}</p>}
+          {r.rootCause.explanation && <p className="mt-3 border-t border-border pt-3 text-sm leading-6 text-muted-foreground">{r.rootCause.explanation}</p>}
         </Card>
       )}
 
+      {/* 3. Supporting evidence */}
       {evidence.length > 0 && (
-        <Card title="Evidence" icon={Lightbulb}>
+        <Card title="3. Supporting evidence" icon={Lightbulb}>
           {unverified > 0 && done && (
             <p role="note" className="mb-3 flex gap-2 text-xs text-amber-300">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
@@ -125,8 +173,37 @@ export function ResultsPanel({ result, partial, originalCode, language, framewor
         </Card>
       )}
 
-      {fix && (fix.summary || fix.correctedCode) && (
-        <Card title="Suggested fix" icon={Wrench}>
+      {/* 4. Confidence */}
+      {done && conf && (
+        <Card title="4. Confidence level" icon={Gauge}>
+          <div className="flex items-center gap-3">
+            <span className={cn("rounded-full border px-3 py-0.5 text-sm font-semibold", conf.cls)}>{conf.label}</span>
+            <div className="flex gap-1" aria-hidden>
+              {[0, 1, 2].map((i) => <span key={i} className={cn("h-1.5 w-8 rounded-full", i < conf.bars ? conf.bar : "bg-surface-elevated")} />)}
+            </div>
+          </div>
+          <p className="mt-2 text-sm text-muted-foreground">{r.confidence!.reason}</p>
+          <p className="mt-1 text-xs text-muted-foreground">Calculated from how much of the evidence was found in your input, not by the AI.</p>
+        </Card>
+      )}
+
+      {(r.alternatives?.length ?? 0) > 0 && (
+        <Card title="Other possible causes" icon={GitBranch}>
+          <p className="mb-2 text-xs text-muted-foreground">{r.rootCause?.certainty === "confirmed" ? "Listed for completeness. The evidence above points to the root cause, not these." : "Not ruled out. Check them in this order."}</p>
+          <ul className="space-y-3">
+            {r.alternatives!.map((a, i) => (
+              <li key={i} className="rounded-lg border border-border bg-background p-3 text-sm">
+                <p className="text-foreground"><span className="mr-2 rounded bg-surface-elevated px-1.5 py-0.5 text-xs text-muted-foreground">{a.likelihood}</span>{a.cause}</p>
+                {a.check && <p className="mt-1 text-muted-foreground">How to check: {a.check}</p>}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      {/* 5. Recommended fix */}
+      {fix && (fix.summary || fix.steps?.length > 0) && (
+        <Card title="5. Recommended fix" icon={Wrench}>
           <div className="mb-3 flex flex-wrap items-center gap-2">
             {fix.risk && (
               <span className={cn("rounded-full border px-2.5 py-0.5 text-xs font-medium", fix.risk === "low" ? "border-emerald-500/40 text-emerald-300" : fix.risk === "medium" ? "border-amber-500/40 text-amber-300" : "border-rose-500/40 text-rose-300")}>
@@ -136,37 +213,48 @@ export function ResultsPanel({ result, partial, originalCode, language, framewor
             <span className="text-xs text-muted-foreground">Suggestion only. Your code is never changed automatically.</span>
           </div>
           {fix.summary && <p className="mb-3 text-sm leading-6 text-foreground">{fix.summary}</p>}
-
-          {fix.changes?.length > 0 && (
-            <ol className="mb-3 list-decimal space-y-1 pl-5 text-sm text-muted-foreground marker:text-primary">
-              {fix.changes.map((c, i) => (
-                <li key={i}>{c.line != null && <span className="font-mono text-primary">line {c.line}: </span>}{c.description}</li>
-              ))}
+          {fix.steps?.length > 0 && (
+            <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground marker:text-primary">
+              {fix.steps.map((st, i) => <li key={i}>{st}</li>)}
             </ol>
           )}
-          {fix.steps?.length > 0 && (
-            <div className="mb-3">
-              <h4 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Steps</h4>
-              <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground marker:text-primary">
-                {fix.steps.map((s, i) => <li key={i}>{s}</li>)}
-              </ol>
-            </div>
-          )}
+          {fix.preserves && <p className="mt-3 border-t border-border pt-3 text-sm text-muted-foreground"><span className="text-foreground">Left unchanged:</span> {fix.preserves}</p>}
+        </Card>
+      )}
 
-          {fix.correctedCode && done && (
+      {/* 6. Corrected code */}
+      {fix?.correctedCode && (
+        <Card title="6. Corrected code" icon={Code2}>
+          {done ? (
             <>
               <DiffView before={originalCode} after={fix.correctedCode} />
               <div className="mt-3 flex flex-wrap gap-2">
                 <CopyButton text={fix.correctedCode} label="Copy fix" />
               </div>
             </>
+          ) : (
+            <p className="text-xs text-muted-foreground">Preparing the before/after comparison…</p>
           )}
-          {fix.correctedCode && !done && <p className="text-xs text-muted-foreground">Preparing the before/after comparison…</p>}
         </Card>
       )}
 
+      {/* 7. Explanation of changes */}
+      {(fix?.changes?.length ?? 0) > 0 && (
+        <Card title="7. Explanation of changes" icon={ListOrdered}>
+          <ol className="list-decimal space-y-2 pl-5 text-sm marker:text-primary">
+            {fix!.changes.map((c, i) => (
+              <li key={i} className="text-foreground">
+                {c.line != null && <span className="font-mono text-primary">line {c.line}: </span>}{c.description}
+                {c.why && <span className="block text-muted-foreground">Why: {c.why}</span>}
+              </li>
+            ))}
+          </ol>
+        </Card>
+      )}
+
+      {/* 8. Verification */}
       {(r.verification?.length ?? 0) > 0 && (
-        <Card title="How to verify" icon={Terminal}>
+        <Card title="8. Verification steps" icon={Terminal}>
           <p className="mb-2 text-xs text-muted-foreground">Errorless has not run any of these. Run them yourself to confirm the fix.</p>
           <ul className="space-y-2">
             {r.verification!.map((c, i) => (
@@ -175,6 +263,15 @@ export function ResultsPanel({ result, partial, originalCode, language, framewor
                 <CopyButton text={c} label="Copy" />
               </li>
             ))}
+          </ul>
+        </Card>
+      )}
+
+      {/* 9. Prevention */}
+      {(r.prevention?.length ?? 0) > 0 && (
+        <Card title="9. Prevention tips" icon={ShieldCheck}>
+          <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground marker:text-primary">
+            {r.prevention!.map((x, i) => <li key={i}>{x}</li>)}
           </ul>
         </Card>
       )}
@@ -188,14 +285,6 @@ export function ResultsPanel({ result, partial, originalCode, language, framewor
                 {m.why && <p className="text-muted-foreground">Why it matters: {m.why}</p>}
               </li>
             ))}
-          </ul>
-        </Card>
-      )}
-
-      {(r.hypotheses?.length ?? 0) > 0 && (
-        <Card title="Other possibilities (unconfirmed)" icon={HelpCircle}>
-          <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground marker:text-secondary">
-            {r.hypotheses!.map((h, i) => <li key={i}>{h}</li>)}
           </ul>
         </Card>
       )}
