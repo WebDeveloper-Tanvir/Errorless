@@ -3,7 +3,7 @@ import { auth } from "@clerk/nextjs/server"
 import { getDevmodePlan } from "@/lib/devmode-plan"
 
 const GEMINI_KEY = process.env.GEMINI_API_KEY || ""
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_MODEL || "gemini-3.8-flash"}:generateContent?key=${GEMINI_KEY}`
 
 export async function POST(req: NextRequest) {
   const { userId } = await auth()
