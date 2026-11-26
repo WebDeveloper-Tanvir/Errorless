@@ -31,7 +31,7 @@ export async function* runDebug(input: DebugRequest, opts: EngineOptions): Async
   for (const f of [...code.findings, ...err.findings, ...ctx.findings]) merged.set(f.kind, (merged.get(f.kind) ?? 0) + f.count)
   yield { type: "meta", model: opts.model || DEFAULT_MODEL, redactions: [...merged].map(([kind, count]) => ({ kind, count })) }
 
-  const norm = { code: req.code, errorText: req.errorText }
+  const norm = { code: req.code, errorText: req.errorText, language: req.language, framework: req.framework }
   const stream = opts.stream ?? streamGemini
   let raw = ""
   let lastSent = 0
@@ -69,5 +69,10 @@ export async function* runDebug(input: DebugRequest, opts: EngineOptions): Async
     yield { type: "error", code: "bad_output", message: "The AI returned an answer we could not read. Please retry.", retryable: true }
     return
   }
-  yield { type: "result", result: normalizeResult(parsed, norm) }
+  try {
+    yield { type: "result", result: normalizeResult(parsed, norm) }
+  } catch {
+    // The strict schema rejected the result: never emit something that does not validate.
+    yield { type: "error", code: "bad_output", message: "The AI returned an answer we could not validate. Please retry.", retryable: true }
+  }
 }

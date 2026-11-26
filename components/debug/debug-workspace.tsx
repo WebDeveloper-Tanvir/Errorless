@@ -5,6 +5,7 @@ import { AlertTriangle, ClipboardPaste, Eraser, FileUp, FlaskConical, Keyboard, 
 import { Button } from "@/components/ui/button"
 import { LIMITS } from "@/lib/debug/types"
 import { redactSecrets } from "@/lib/debug/redact"
+import { detectLanguage } from "@/lib/debug/detect"
 import { cn } from "@/lib/utils"
 import { CodeInput } from "./code-input"
 import { EXAMPLES, EXT_LANGUAGE, FRAMEWORKS, LANGUAGES } from "./constants"
@@ -21,7 +22,7 @@ export function DebugWorkspace() {
   const [errorText, setErrorText] = useState("")
   const [code, setCode] = useState("")
   const [context, setContext] = useState("")
-  const [language, setLanguage] = useState("javascript")
+  const [language, setLanguage] = useState("auto")
   const [framework, setFramework] = useState<string>(FRAMEWORKS[0])
   const [notice, setNotice] = useState<string | null>(null)
   const [showKeys, setShowKeys] = useState(false)
@@ -102,7 +103,8 @@ export function DebugWorkspace() {
     return () => window.removeEventListener("keydown", h, true)
   }, [])
 
-  const monacoLang = LANGUAGES.find((l) => l.value === language)?.monaco ?? "plaintext"
+  const guessed = useMemo(() => (language === "auto" ? detectLanguage(errorText, code)?.language : undefined), [language, errorText, code])
+  const monacoLang = LANGUAGES.find((l) => l.value === (guessed ?? language))?.monaco ?? "plaintext"
 
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
@@ -153,7 +155,7 @@ export function DebugWorkspace() {
               onChange={(e) => setErrorText(e.target.value.slice(0, LIMITS.errorText))}
               rows={8}
               spellCheck={false}
-              placeholder="Paste the full error message or stack trace…"
+              placeholder="Paste an error, stack trace, log, or API, database, Docker or dependency error…"
               className="min-h-40 w-full resize-y rounded-lg border border-border bg-background p-3 font-mono text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
             />
             <p className="mt-1 text-right font-mono text-xs text-muted-foreground">{errorText.length.toLocaleString()} / {LIMITS.errorText.toLocaleString()}</p>
@@ -161,7 +163,7 @@ export function DebugWorkspace() {
 
           <div>
             <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
-              <span id="dbg-code-label" className="text-sm font-medium text-foreground">Code <span className="text-xs font-normal text-muted-foreground">(optional, but gives better answers)</span></span>
+              <span id="dbg-code-label" className="text-sm font-medium text-foreground">Code or config <span className="text-xs font-normal text-muted-foreground">(optional, but gives better answers)</span></span>
               <Button type="button" variant="outline" size="sm" onClick={() => codeFileRef.current?.click()}><FileUp className="h-4 w-4" aria-hidden />Code file</Button>
               <input ref={codeFileRef} type="file" className="sr-only" tabIndex={-1} aria-label="Upload code file"
                 accept={Object.keys(EXT_LANGUAGE).map((x) => `.${x}`).join(",")}

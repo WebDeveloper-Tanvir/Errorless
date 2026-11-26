@@ -1,6 +1,46 @@
-# AI Debug Workspace
+# AI Debug Workspace (Root-Cause-First engine)
+
+It is a debugging engine, not a chatbot: it only analyzes error-related input and returns a fixed, validated structure.
+
+## Supported input
+
+Error messages, stack traces, source code, logs, configuration files (package.json, Dockerfile, docker-compose, YAML, .env, tsconfig), API errors, database errors, Docker errors and dependency errors. `lib/debug/detect.ts` classifies the input (`summary.inputKinds`) and guesses language and framework. Language and framework default to **Auto-detect**; a value the user picks always wins.
+
+## Response format (Zod: `lib/debug/schema.ts`)
+
+| # | Section | Field |
+|---|---|---|
+| 1 | Error Summary (symptoms kept apart from the cause) | `summary`, `detected`, `dependencyIssues` |
+| 2 | Root Cause | `rootCause` (`confirmed` / `likely` / `hypothesis`) |
+| 3 | Supporting Evidence | `evidence[]`, each checked against the input |
+| 4 | Confidence Level | `confidence` (`high`/`medium`/`low`), computed in code |
+| 5 | Recommended Fix | `fix.summary`, `fix.steps`, `fix.risk`, `fix.preserves` |
+| 6 | Corrected Code | `fix.correctedCode` (shown as a diff) |
+| 7 | Explanation of Changes | `fix.changes[]` (`line`, `description`, `why`) |
+| 8 | Verification Steps | `verification[]`, for the developer to run |
+| 9 | Prevention Tips | `prevention[]` |
+
+Also: `alternatives[]` (other possible causes, each with a concrete check), `missingContext[]` (essential questions only, max 3), `warnings[]`, `executed: false`.
+
+`ModelOutputSchema` is lenient (bad fields fall back to safe defaults). `DebugResultSchema` is strict, and the engine never emits a result that fails it.
+
+## Rules enforced in code
 
 Dev Mode → **Debug** tab. Paste an error, optionally the code, and get a root cause, evidence and a minimal fix, streamed live.
+
+Additional engine rules:
+
+| Rule | Enforcement |
+|---|---|
+| Separate symptoms from root causes | `summary.symptoms` is separate. A root cause that only repeats the error line is flagged and capped at `likely`. |
+| Confidence is not self-reported | Derived from certainty and how many evidence quotes were found in the input. The model's own confidence is ignored. |
+| Never claim verification without execution | Sentences like "I ran it", "verified by running", "tests pass" are removed from all prose and a warning is added. `executed` is always `false`. |
+| Safe suggestions | Destructive commands (rm -rf, DROP, git reset --hard, docker prune, sudo, curl-pipe-shell, force push) are removed from `verification` and `fix.steps`. |
+| Essential questions only | Max 3, deduplicated, and dropped entirely when the cause is confirmed. |
+| Multiple causes when unsure | `alternatives[]` with checks; confidence stays low/medium without proof. |
+| Preserve intended behavior | `fix.preserves` states what is unchanged; large rewrites trigger a warning; identical "fixes" are dropped. |
+| No invented dependencies | `dependencyIssues` names must appear in the input. |
+| Redact secrets | Also covers Dockerfile ENV/ARG, YAML/INI values, connection-string passwords, Basic auth, x-api-key headers, CLI flags and Docker registry auth, with line counts preserved. |
 
 ## Setup
 
@@ -9,7 +49,7 @@ Dev Mode → **Debug** tab. Paste an error, optionally the code, and get a root 
 | `GEMINI_API_KEY` | yes | Server-side key. Never sent to the browser. Without it the API returns `503 ai_not_configured` (there is no mock fallback). |
 | `GEMINI_MODEL` | no | Defaults to `gemini-3.8-flash`. Override if Google renames or retires the model. The old `gemini-1.5-flash` is retired. |
 | `GEMINI_API_BASE` | no | Override the Gemini base URL (used by tests). |
-| `ADMIN_USER_IDS` | no | Clerk user IDs treated as Premium admins. |
+| `ADMIN_USER_IDS` / `ADMIN_EMAILS` | no | Clerk user IDs, or verified primary emails, treated as Premium admins. |
 
 Access requires a signed-in user with a Dev Mode plan (Basic or Premium).
 
@@ -29,9 +69,7 @@ lib/debug/partial-json.ts progressive rendering of partial JSON
 lib/debug/diff.ts         LCS line diff for Before/After
 ```
 
-## How the AI rules are enforced
-
-The rules are enforced in code, not only in the prompt.
+The prompt asks for these behaviors, and `normalize.ts` enforces them regardless of what the model returns.
 
 | Rule | Enforcement |
 |---|---|
@@ -57,6 +95,6 @@ Error text 20,000 chars, code 60,000, context 5,000, uploads 200 KB (text only).
 
 ## Tests
 
-`npm test` runs `tests/debug.test.ts` (Node test runner, no network): redaction, partial JSON, SSE, diff, evidence verification, and the engine against a local mock Gemini SSE server. Browser behaviour (streaming render, error and retry, copy, feedback, shortcuts, mobile layout) was verified with Playwright against a mocked API.
+`npm test` runs `tests/*.test.ts` (Node test runner, no network). `debug.test.ts`: redaction, partial JSON, SSE, diff, evidence verification, engine against a local mock Gemini SSE server. `root-cause.test.ts`: input/language/framework detection for all nine input types, schema leniency and strictness, each engine rule above, and end-to-end scenarios (Python KeyError, React undefined map, Docker lockfile, Postgres missing table, npm ERESOLVE, API 401/CORS, hallucination guard, secrets never reaching the prompt) using an injected model. Browser behaviour (streaming render, error and retry, copy, feedback, shortcuts, mobile layout) was verified with Playwright against a mocked API.
 
 **Not covered:** a live call to the real Gemini API. Verify with a real key before relying on output quality. If Monaco's CDN is unreachable the editor falls back to a plain textarea.

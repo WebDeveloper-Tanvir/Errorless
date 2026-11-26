@@ -1,4 +1,5 @@
 export const LANGUAGES = [
+  { value: "auto", label: "Auto-detect", monaco: "plaintext" },
   { value: "javascript", label: "JavaScript", monaco: "javascript" },
   { value: "typescript", label: "TypeScript", monaco: "typescript" },
   { value: "python", label: "Python", monaco: "python" },
@@ -16,10 +17,15 @@ export const LANGUAGES = [
   { value: "bash", label: "Shell", monaco: "shell" },
   { value: "html", label: "HTML", monaco: "html" },
   { value: "css", label: "CSS", monaco: "css" },
+  { value: "dockerfile", label: "Dockerfile", monaco: "dockerfile" },
+  { value: "yaml", label: "YAML", monaco: "yaml" },
+  { value: "json", label: "JSON", monaco: "json" },
+  { value: "ini", label: "TOML / INI / .env", monaco: "ini" },
   { value: "other", label: "Other", monaco: "plaintext" },
 ] as const
 
 export const FRAMEWORKS = [
+  "Auto-detect",
   "None / plain language",
   "React",
   "Next.js",
@@ -37,6 +43,7 @@ export const FRAMEWORKS = [
   "Flutter",
   "Android",
   "Unity",
+  "Docker / Compose",
 ] as const
 
 /** Extension → language, used when a code file is uploaded. */
@@ -45,6 +52,7 @@ export const EXT_LANGUAGE: Record<string, string> = {
   ts: "typescript", tsx: "typescript", py: "python", java: "java", cs: "csharp",
   cpp: "cpp", cc: "cpp", c: "c", h: "c", go: "go", rs: "rust", rb: "ruby", php: "php",
   swift: "swift", kt: "kotlin", sql: "sql", sh: "bash", html: "html", css: "css",
+  yml: "yaml", yaml: "yaml", json: "json", toml: "ini", ini: "ini", env: "ini", dockerfile: "dockerfile",
 }
 
 export interface Example {
@@ -100,6 +108,31 @@ KeyError: 'qty'`,
 
 
 print(total_price({"items": [{"price": 10, "quantity": 2}]}))
+`,
+  },
+  {
+    label: "Docker: build fails",
+    language: "dockerfile",
+    framework: "Docker / Compose",
+    errorText: `failed to solve: process "/bin/sh -c npm ci" did not complete successfully: exit code: 1
+npm ERR! code EUSAGE
+npm ERR! \`npm ci\` can only install packages when your package.json and package-lock.json are in sync.`,
+    code: `FROM node:20-alpine
+WORKDIR /app
+COPY package.json ./
+RUN npm ci
+COPY . .
+CMD ["node", "server.js"]
+`,
+  },
+  {
+    label: "Postgres: missing table",
+    language: "sql",
+    framework: "None / plain language",
+    errorText: `error: relation "users" does not exist
+    at Parser.parseErrorMessage (node_modules/pg-protocol/dist/parser.js:287:98)
+  code: '42P01'`,
+    code: `SELECT id, email FROM users WHERE active = true;
 `,
   },
 ]

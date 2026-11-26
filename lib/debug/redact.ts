@@ -31,6 +31,21 @@ const RULES: Rule[] = [
     re: /\b((?:[A-Za-z0-9_]*(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?key|auth[_-]?token|token|private[_-]?key)[A-Za-z0-9_]*)["']?\s*[:=]\s*)(["'])[^"'\s\n]{6,}\2/gi,
     keepGroup: 1,
   },
+  { kind: "Basic auth header", re: /\b(Basic\s+)[A-Za-z0-9+/=]{12,}/g, keepGroup: 1 },
+  { kind: "API key header", re: /\b(x-api-key["']?\s*[:=]\s*["']?)[A-Za-z0-9._-]{12,}/gi, keepGroup: 1 },
+  { kind: "Password in connection string", re: /([?&;](?:password|pwd|passwd)=)[^&;\s"']+/gi, keepGroup: 1 },
+  { kind: "Secret CLI flag", re: /(--(?:password|passwd|token|secret|api-key)[= ])[^\s"']{4,}/gi, keepGroup: 1 },
+  { kind: "Docker registry auth", re: /("auth"\s*:\s*")[A-Za-z0-9+/=]{16,}(?=")/g, keepGroup: 1 },
+  {
+    kind: "Secret in Dockerfile ENV/ARG",
+    re: /^((?:ENV|ARG)\s+[A-Za-z][A-Za-z0-9_]*(?:PASSWORD|SECRET|API_KEY|ACCESS_KEY|TOKEN|PRIVATE_KEY)[A-Za-z0-9_]*[= ]\s*)[^\s#][^\s#]{3,}/gim,
+    keepGroup: 1,
+  },
+  {
+    kind: "Secret in YAML/INI value",
+    re: /^(\s*[A-Za-z0-9_.-]*(?:password|passwd|secret|api[_-]?key|access[_-]?key|token|private[_-]?key)[A-Za-z0-9_.-]*\s*[:=]\s*)(?!\[REDACTED\])[^\s#"'$][^\s#]{5,}/gim,
+    keepGroup: 1,
+  },
   {
     kind: "Secret in .env style line",
     re: /^([A-Z][A-Z0-9_]*(?:PASSWORD|SECRET|API_KEY|ACCESS_KEY|TOKEN|PRIVATE_KEY)[A-Z0-9_]*\s*=\s*)[^\s#'"][^\s#]{5,}/gm,

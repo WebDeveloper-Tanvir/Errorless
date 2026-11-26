@@ -1,4 +1,5 @@
-/** Shared types and limits for the AI debugging workspace. Pure: no imports. */
+/** Shared limits, request/event types and errors for the AI debugging workspace. Result types come from schema.ts (Zod). */
+import type { DebugResult } from "./schema.ts"
 
 export const LIMITS = {
   errorText: 20_000,
@@ -8,54 +9,12 @@ export const LIMITS = {
   evidence: 8,
   steps: 12,
   commands: 8,
-  questions: 4,
+  questions: 3,
 } as const
 
-export type Certainty = "confirmed" | "likely" | "hypothesis"
-
-export interface Evidence {
-  source: "code" | "error"
-  /** 1-based line in the submitted code. Only present when the quote was found there. */
-  line?: number
-  quote: string
-  note: string
-  /** true: quote found in the input. false: not found. null: not checked yet (streaming). */
-  verified: boolean | null
-}
-
-export interface FixChange {
-  line?: number
-  description: string
-}
-
-export interface Fix {
-  summary: string
-  changes: FixChange[]
-  correctedCode: string
-  steps: string[]
-  risk: "low" | "medium" | "high"
-}
-
-export interface MissingContext {
-  question: string
-  why: string
-}
-
-export interface DebugResult {
-  status: "diagnosed" | "needs_context"
-  rootCause: { statement: string; certainty: Certainty; basis: string }
-  explanation: string
-  evidence: Evidence[]
-  fix: Fix | null
-  /** Commands the developer can run. Errorless never runs them. */
-  verification: string[]
-  missingContext: MissingContext[]
-  /** Other possible causes that are NOT confirmed. */
-  hypotheses: string[]
-  /** Always false: results come from model reasoning, nothing is executed. */
-  executed: false
-  warnings: string[]
-}
+export type {
+  Alternative, Certainty, DebugResult, Evidence, Fix, FixChange, InputKind, MissingContext,
+} from "./schema.ts"
 
 export interface DebugRequest {
   errorText: string
