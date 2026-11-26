@@ -6,7 +6,7 @@ import { isAdmin, type PaymentRequest } from "@/lib/devmode-plan"
 export async function GET() {
   const { userId } = await auth()
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  if (!isAdmin(userId)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  if (!(await isAdmin(userId))) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const client = await clerkClient()
   const { data } = await client.users.getUserList({ limit: 500, orderBy: "-updated_at" })

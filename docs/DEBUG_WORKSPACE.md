@@ -9,7 +9,7 @@ Dev Mode → **Debug** tab. Paste an error, optionally the code, and get a root 
 | `GEMINI_API_KEY` | yes | Server-side key. Never sent to the browser. Without it the API returns `503 ai_not_configured` (there is no mock fallback). |
 | `GEMINI_MODEL` | no | Defaults to `gemini-3.8-flash`. Override if Google renames or retires the model. The old `gemini-1.5-flash` is retired. |
 | `GEMINI_API_BASE` | no | Override the Gemini base URL (used by tests). |
-| `ADMIN_USER_IDS` | no | Clerk user IDs treated as Premium admins. |
+| `ADMIN_USER_IDS` / `ADMIN_EMAILS` | no | Clerk user IDs, or verified primary emails, treated as Premium admins. |
 
 Access requires a signed-in user with a Dev Mode plan (Basic or Premium).
 

@@ -6,7 +6,7 @@ import { isAdmin, type PaymentRequest } from "@/lib/devmode-plan"
 export async function POST(req: NextRequest) {
   const { userId } = await auth()
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  if (!isAdmin(userId)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  if (!(await isAdmin(userId))) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const { targetUserId, action } = await req.json().catch(() => ({}))
   if (typeof targetUserId !== "string" || (action !== "approve" && action !== "reject")) {

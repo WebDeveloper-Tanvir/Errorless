@@ -12,13 +12,20 @@ export interface PaymentRequest {
 
 export const PLAN_PRICE_INR = { basic: 209, premium: 419 } as const
 
-/** Admins are the Clerk user IDs listed (comma-separated) in ADMIN_USER_IDS. */
-export function isAdmin(userId: string): boolean {
-  return (process.env.ADMIN_USER_IDS ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .includes(userId)
+const list = (v?: string) => (v ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
+
+/**
+ * Admins are the Clerk user IDs in ADMIN_USER_IDS, or users whose *verified primary*
+ * email is listed in ADMIN_EMAILS (both comma-separated).
+ */
+export async function isAdmin(userId: string): Promise<boolean> {
+  if (list(process.env.ADMIN_USER_IDS).includes(userId.toLowerCase())) return true
+  const emails = list(process.env.ADMIN_EMAILS)
+  if (emails.length === 0) return false
+  const client = await clerkClient()
+  const user = await client.users.getUser(userId)
+  const primary = user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)
+  return !!primary && primary.verification?.status === "verified" && emails.includes(primary.emailAddress.toLowerCase())
 }
 
 /**
@@ -27,7 +34,7 @@ export function isAdmin(userId: string): boolean {
  * Admins get Premium so they can test every feature.
  */
 export async function getDevmodePlan(userId: string): Promise<DevPlan> {
-  if (isAdmin(userId)) return "premium"
+  if (await isAdmin(userId)) return "premium"
   const client = await clerkClient()
   const user = await client.users.getUser(userId)
   const p = user.publicMetadata?.devmodePlan
