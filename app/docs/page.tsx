@@ -12,6 +12,7 @@ const SECTIONS = [
   { id: "overview", title: "Overview" },
   { id: "static-analysis", title: "Static analysis" },
   { id: "dev-mode", title: "Dev Mode (AI)" },
+  { id: "debug-workspace", title: "AI debug workspace" },
   { id: "ide", title: "IDE and editor" },
   { id: "languages", title: "Supported languages" },
   { id: "data", title: "How your code is handled" },
@@ -104,8 +105,9 @@ export default function DocsPage() {
 
             <section className="space-y-4">
               <H2 id="dev-mode">Dev Mode (AI)</H2>
-              <p>Dev Mode has three tools, all in one workspace:</p>
+              <p>Dev Mode has four tools, all in one workspace:</p>
               <ul className="list-disc space-y-2 pl-5">
+                <li><strong>Debug</strong>: paste an error and get a root cause, evidence and a minimal fix (see below).</li>
                 <li><strong>Analyze</strong>: upload or paste code and get a summary, complexity, issues, security, performance and suggestions.</li>
                 <li><strong>Generate</strong>: describe what you need and pick a language.</li>
                 <li><strong>Optimize</strong>: rewrite code for better performance (Premium).</li>
@@ -113,6 +115,26 @@ export default function DocsPage() {
               <p>
                 Basic includes generate and analyze with 24-hour memory. Premium adds optimize, permanent memory and
                 priority processing. See <Link href="/pricing" className="text-brand underline-offset-4 hover:underline">pricing</Link>.
+              </p>
+            </section>
+
+            <section className="space-y-4">
+              <H2 id="debug-workspace">AI debug workspace</H2>
+              <p>
+                Paste an error message, optionally add the code and context, choose a language and framework, then press
+                <strong> Analyze error</strong> (<code>Ctrl/⌘ + Enter</code>). You can paste from the clipboard, upload an error log or a code file,
+                load an example or clear everything. The answer streams in as it is written.
+              </p>
+              <ul className="list-disc space-y-2 pl-5">
+                <li><strong>Root cause</strong> is labelled Confirmed, Likely or Hypothesis. Confirmed requires evidence found in your input.</li>
+                <li><strong>Evidence</strong> quotes your error or code. Quotes that cannot be found in your input are flagged and shown without a line number.</li>
+                <li><strong>Suggested fix</strong> is the smallest change that addresses the cause, with a before/after diff and a Copy fix button. Your code is never changed automatically.</li>
+                <li><strong>How to verify</strong> lists commands for you to run. Errorless does not execute code or commands.</li>
+                <li><strong>Missing context</strong> lists what to add when the input is not enough to be sure.</li>
+              </ul>
+              <p>
+                Likely secrets (API keys, tokens, private keys, connection strings) are masked before your input is sent to the AI.
+                The shortcuts dialog (<code>Alt + /</code>) lists every shortcut. Full details are in <code>docs/DEBUG_WORKSPACE.md</code> in the repository.
               </p>
             </section>
 

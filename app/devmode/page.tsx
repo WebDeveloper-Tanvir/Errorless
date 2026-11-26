@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { useUser } from "@clerk/nextjs"
 import { UpiPayment } from "@/components/upi-payment"
+import { DebugWorkspace } from "@/components/debug/debug-workspace"
 import { AlertTriangle, BarChart3, Brain, Check, Copy, Crown, Download, FileCode2, Gauge, Lightbulb, Loader2, Lock, Minus, RefreshCw, ScanSearch, ShieldCheck, Sparkles, Upload, X, Zap } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { Header } from "@/components/header"
@@ -11,7 +12,7 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 type Plan = "none" | "basic" | "premium"
-type Tab = "generate" | "analyze" | "optimize"
+type Tab = "debug" | "generate" | "analyze" | "optimize"
 type UploadedFile = { name: string; content: string; language: string }
 
 const PLANS = {
@@ -114,7 +115,7 @@ export default function DevModePage() {
   const [selected, setSelected] = useState<"basic" | "premium" | null>(null)
   const [toastMsg, setToastMsg] = useState("")
 
-  const [tab, setTab] = useState<Tab>("generate")
+  const [tab, setTab] = useState<Tab>("debug")
   const [file, setFile] = useState<UploadedFile | null>(null)
   const [prompt, setPrompt] = useState("")
   const [lang, setLang] = useState("python")
@@ -351,6 +352,7 @@ export default function DevModePage() {
 
   // ─── WORKSPACE ──────────────────────────────────────────────────────────────
   const TABS: { id: Tab; label: string; icon: LucideIcon; locked: boolean }[] = [
+    { id: "debug", label: "Debug", icon: ScanSearch, locked: false },
     { id: "generate", label: "Generate", icon: Sparkles, locked: false },
     { id: "analyze", label: "Analyze", icon: ScanSearch, locked: false },
     { id: "optimize", label: "Optimize", icon: RefreshCw, locked: !isPremium },
@@ -383,21 +385,27 @@ export default function DevModePage() {
         {plan === "basic" && <Button size="sm" variant="gradient" onClick={upgrade}>Upgrade to Premium</Button>}
       </div>
 
+      <div className="mx-auto max-w-7xl px-4 pb-4 sm:px-6">
+        <div role="tablist" aria-label="Mode" className="grid grid-cols-4 gap-1 rounded-xl border border-border bg-card p-1">
+          {TABS.map(({ id, label: l, icon: Icon, locked }) => (
+            <button key={id} role="tab" aria-selected={tab === id} aria-disabled={locked} onClick={() => !locked && setTab(id)}
+              title={locked ? "Optimize is a Premium feature" : undefined}
+              className={cn("flex flex-col items-center gap-1 rounded-lg px-2 py-2 text-xs font-medium transition-colors",
+                tab === id ? "bg-surface-elevated text-foreground ring-1 ring-border" : "text-muted-foreground hover:text-foreground",
+                locked && "cursor-not-allowed opacity-50 hover:text-muted-foreground")}>
+              <Icon className="size-4" aria-hidden />{l}{locked && <span className="sr-only"> (Premium)</span>}
+            </button>
+          ))}
+        </div>
+
+      </div>
+
+      {tab === "debug" ? (
+        <main id="main"><DebugWorkspace /></main>
+      ) : (
       <main id="main" className="mx-auto grid max-w-7xl gap-4 px-4 pb-10 sm:px-6 lg:grid-cols-[22rem_1fr]">
         {/* Controls */}
         <aside className="space-y-6 rounded-2xl border border-border bg-card p-5 shadow-card lg:self-start">
-          <div role="tablist" aria-label="Mode" className="grid grid-cols-3 gap-1 rounded-xl bg-background p-1">
-            {TABS.map(({ id, label: l, icon: Icon, locked }) => (
-              <button key={id} role="tab" aria-selected={tab === id} aria-disabled={locked} onClick={() => !locked && setTab(id)}
-                title={locked ? "Optimize is a Premium feature" : undefined}
-                className={cn("flex flex-col items-center gap-1 rounded-lg px-2 py-2 text-xs font-medium transition-colors",
-                  tab === id ? "bg-surface-elevated text-foreground ring-1 ring-border" : "text-muted-foreground hover:text-foreground",
-                  locked && "cursor-not-allowed opacity-50 hover:text-muted-foreground")}>
-                <Icon className="size-4" aria-hidden />{l}{locked && <span className="sr-only"> (Premium)</span>}
-              </button>
-            ))}
-          </div>
-
           {tab === "generate" && (
             <div>
               <label htmlFor="gen-lang" className={label}>Language</label>
@@ -523,6 +531,7 @@ export default function DevModePage() {
           )}
         </div>
       </main>
+      )}
       {toast}
     </div>
   )
