@@ -3,7 +3,8 @@ import type { Metadata, Viewport } from "next"
 import { Inter, JetBrains_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { ClerkClientProvider } from "@/components/clerk-provider"
-import { ConvexClientProvider } from "@/components/convex-provider"
+import { AnalyticsEvents } from "@/components/analytics-events"
+import { DEFAULT_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/seo/site"
 import "./globals.css"
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" })
@@ -17,18 +18,14 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://errorless.dev"),
-  title: "Errorless - AI-Powered Code Error Solver | Real-Time Debugging",
-  description:
-    "Errorless is an AI-powered code error solver that provides context-aware live error detection and fixes. Collaborate with your team, share fixes, and build better code faster.",
-  keywords: [
-    "code error solver", "AI debugging", "code assistant",
-    "error detection", "live error solver", "collaborative coding", "developer tools",
-  ],
-  applicationName: "Errorless",
+  metadataBase: new URL(SITE_URL),
+  // Pages set their own absolute title; this template covers any page that only sets a short one.
+  title: { default: "Errorless: AI Error Debugger That Finds the Root Cause", template: "%s | Errorless" },
+  description: DEFAULT_DESCRIPTION,
+  applicationName: SITE_NAME,
   authors: [{ name: "Errorless Team" }],
-  creator: "Errorless",
-  publisher: "Errorless",
+  creator: SITE_NAME,
+  publisher: SITE_NAME,
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },
@@ -37,27 +34,15 @@ export const metadata: Metadata = {
     apple: [{ url: "/errorless-logo.jpg" }],
     shortcut: "/favicon.ico",
   },
+  // No canonical here: a site-wide canonical would point every page at the home page.
+  // Each public page sets its own with buildMetadata().
   robots: {
     index: true,
     follow: true,
     googleBot: { index: true, follow: true, "max-video-preview": -1, "max-image-preview": "large", "max-snippet": -1 },
   },
-  openGraph: {
-    type: "website",
-    locale: "en_US",
-    url: "https://errorless.dev",
-    siteName: "Errorless",
-    title: "Errorless - AI-Powered Code Error Solver",
-    description: "Real-time error detection and AI-powered fixes for developers",
-    images: [{ url: "/errorless-logo.jpg", width: 1024, height: 1024, alt: "Errorless Logo" }],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Errorless - AI-Powered Code Error Solver",
-    description: "Real-time error detection and AI-powered fixes for developers",
-    images: ["/errorless-logo.jpg"],
-  },
-  alternates: { canonical: "https://errorless.dev" },
+  openGraph: { type: "website", locale: "en_US", siteName: SITE_NAME },
+  twitter: { card: "summary_large_image" },
 }
 
 export default function RootLayout({
@@ -77,27 +62,12 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
-        {/* Structured data */}
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
-              "@context": "https://schema.org",
-              "@type": "SoftwareApplication",
-              name: "Errorless",
-              description: "AI-powered code error solver with real-time debugging and team collaboration",
-              url: "https://errorless.dev",
-              applicationCategory: "DeveloperApplication",
-            }),
-          }}
-        />
       </head>
       <body>
         <ClerkClientProvider>
-          <ConvexClientProvider>
-            {children}
-            <Analytics />
-          </ConvexClientProvider>
+          {children}
+          <AnalyticsEvents />
+          <Analytics />
         </ClerkClientProvider>
       </body>
     </html>

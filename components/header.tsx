@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils"
 const NAV_LINKS = [
   { label: "Features", href: "/#features" },
   { label: "How it works", href: "/#how-it-works" },
+  { label: "Debug guides", href: "/tools" },
   { label: "Pricing", href: "/pricing" },
   { label: "Docs", href: "/docs" },
 ] as const
@@ -44,7 +45,7 @@ export function Header() {
     return () => window.removeEventListener("scroll", onScroll)
   }, [])
 
-  const isActive = (href: string) => !href.includes("#") && pathname === href
+  const isActive = (href: string) => !href.includes("#") && (pathname === href || (href !== "/" && pathname.startsWith(`${href}/`)))
 
   return (
     <header
