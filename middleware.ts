@@ -17,6 +17,11 @@ const isPublicRoute = createRouteMatcher([
   "/pricing(.*)",
   "/docs(.*)",
   "/demo(.*)",
+  "/tools(.*)",              // public SEO tool pages
+  "/sitemap.xml",            // crawlers must reach these without a session
+  "/robots.txt",
+  "/opengraph-image(.*)",
+  "/twitter-image(.*)",
   "/learn(.*)",
   "/api/webhooks/(.*)",   // Clerk webhook must be public
 ])

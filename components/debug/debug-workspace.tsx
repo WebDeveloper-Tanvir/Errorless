@@ -31,6 +31,23 @@ export function DebugWorkspace() {
   const codeFileRef = useRef<HTMLInputElement>(null)
   const submittedCode = useRef("")
 
+  // Hand-off from the public tool pages: text the visitor already pasted there.
+  useEffect(() => {
+    try {
+      const raw = window.sessionStorage.getItem("errorless:prefill")
+      if (!raw) return
+      window.sessionStorage.removeItem("errorless:prefill")
+      const p = JSON.parse(raw) as Record<string, unknown>
+      const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "")
+      if (str(p.errorText, 1)) setErrorText(str(p.errorText, LIMITS.errorText))
+      if (str(p.code, 1)) setCode(str(p.code, LIMITS.code))
+      if (LANGUAGES.some((l) => l.value === p.language)) setLanguage(p.language as string)
+      if ((FRAMEWORKS as readonly string[]).includes(p.framework as string)) setFramework(p.framework as string)
+    } catch {
+      /* ignore malformed hand-off data */
+    }
+  }, [])
+
   const running = state.phase === "running"
   const hasOutput = state.phase !== "idle"
   const canRun = errorText.trim().length > 0 && !running

@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { Github } from "lucide-react"
 import { Logo } from "@/components/logo"
+import { TOOL_PAGES, toolPath } from "@/lib/seo/tools"
 
 // Only routes that exist today. Add legal/social links here once those pages
 // or profiles exist, rather than shipping placeholder "#" links.
@@ -12,6 +13,13 @@ const COLUMNS = [
       { label: "How it works", href: "/#how-it-works" },
       { label: "Pricing", href: "/pricing" },
       { label: "Demo", href: "/demo" },
+    ],
+  },
+  {
+    title: "Debugging guides",
+    links: [
+      { label: "All guides", href: "/tools" },
+      ...TOOL_PAGES.map((t) => ({ label: t.name, href: toolPath(t.slug) })),
     ],
   },
   {
@@ -36,7 +44,7 @@ export function Footer() {
   return (
     <footer className="border-t border-border bg-surface/40">
       <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
-        <div className="grid gap-10 md:grid-cols-[1.4fr_repeat(3,1fr)]">
+        <div className="grid gap-10 md:grid-cols-[1.4fr_repeat(4,1fr)]">
           <div className="flex max-w-xs flex-col gap-4">
             <Logo />
             <p className="text-sm leading-relaxed text-muted-foreground">

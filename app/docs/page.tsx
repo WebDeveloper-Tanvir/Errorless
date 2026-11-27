@@ -2,11 +2,13 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
+import { buildMetadata } from "@/lib/seo/metadata"
 
-export const metadata: Metadata = {
-  title: "Documentation | Errorless",
-  description: "How Errorless analyzes your code, what each workspace does and how your code is handled.",
-}
+export const metadata: Metadata = buildMetadata({
+  title: "Errorless Documentation: Debugging Workspaces and Privacy",
+  description: "How Errorless analyzes errors, what each workspace does, how evidence and confidence are calculated, and how your code and secrets are handled.",
+  path: "/docs",
+})
 
 const SECTIONS = [
   { id: "overview", title: "Overview" },

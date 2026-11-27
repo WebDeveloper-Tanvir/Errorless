@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { SseParser } from "@/lib/debug/sse"
+import { track } from "@/lib/analytics"
 import type { DebugEvent, DebugRequest, DebugResult } from "@/lib/debug/types"
 
 export interface SessionError {
@@ -71,8 +72,19 @@ export function useDebugSession() {
           try { ev = JSON.parse(m.data) } catch { continue }
           if (ev.type === "meta") setState((s) => ({ ...s, redactions: ev.redactions, model: ev.model }))
           else if (ev.type === "partial") setState((s) => ({ ...s, partial: ev.result }))
-          else if (ev.type === "result") { finished = true; setState((s) => ({ ...s, phase: "done", result: ev.result, partial: null })) }
-          else if (ev.type === "error") { finished = true; fail({ message: ev.message, code: ev.code, retryable: ev.retryable }) }
+          else if (ev.type === "result") {
+            finished = true
+            setState((s) => ({ ...s, phase: "done", result: ev.result, partial: null }))
+            track("debug_complete", {
+              status: ev.result.status,
+              confidence: ev.result.confidence.level,
+              language: ev.result.detected.language,
+              framework: ev.result.detected.framework,
+              input_kinds: ev.result.summary.inputKinds.join(","),
+              has_code: req.code.trim().length > 0,
+            })
+          }
+          else if (ev.type === "error") { finished = true; track("debug_error", { code: ev.code, retryable: ev.retryable }); fail({ message: ev.message, code: ev.code, retryable: ev.retryable }) }
         }
       }
       if (!finished) fail({ message: "The connection closed before the analysis finished. Please retry.", code: "interrupted", retryable: true })

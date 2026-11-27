@@ -1,14 +1,10 @@
+import type { Metadata } from "next"
 import type React from "react"
+import { privateMetadata } from "@/lib/seo/metadata"
 
-export const metadata = {
-  title: "Errorless IDE - Code Editor with AI Assistant",
-  description: "Full-featured VS Code-like IDE with Errorless AI chatbot for coding assistance",
-}
+// The IDE works on the user's own files: never indexed.
+export const metadata: Metadata = privateMetadata("IDE | Errorless")
 
-export default function IDELayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function IDELayout({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }

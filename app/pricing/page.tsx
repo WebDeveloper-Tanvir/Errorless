@@ -4,12 +4,14 @@ import { Footer } from "@/components/footer"
 import { FAQ } from "@/components/faq"
 import { CTA } from "@/components/cta"
 import { SectionHeading } from "@/components/landing/section-heading"
+import { buildMetadata } from "@/lib/seo/metadata"
 import { PricingCards } from "@/components/pricing/pricing-cards"
 
-export const metadata: Metadata = {
-  title: "Pricing | Errorless",
-  description: "Start free with static analysis, or unlock AI analysis, generation and optimization with Dev Mode.",
-}
+export const metadata: Metadata = buildMetadata({
+  title: "Errorless Pricing: Free Analysis and Dev Mode Plans",
+  description: "Start free with static analysis and pattern-based error explanations, or unlock AI debugging, code generation and optimization with a Dev Mode plan.",
+  path: "/pricing",
+})
 
 export default function PricingPage() {
   return (
@@ -25,6 +27,7 @@ export default function PricingPage() {
               description="Free static analysis in the editor and IDE. Dev Mode adds AI analysis, generation and optimization."
             />
             <div className="mt-14">
+              <h2 className="sr-only">Plans</h2>
               <PricingCards />
             </div>
             <p className="mx-auto mt-8 max-w-2xl text-center text-xs text-muted-foreground">
