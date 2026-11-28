@@ -25,3 +25,5 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+# IDE browser runtimes copied by scripts/prepare-ide-runtime.mjs
+/public/ide-runtime/

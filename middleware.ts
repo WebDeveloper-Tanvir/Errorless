@@ -26,6 +26,7 @@ const isPublicRoute = createRouteMatcher([
   "/opengraph-image(.*)",
   "/twitter-image(.*)",
   "/learn(.*)",
+  "/ide-runtime(.*)",        // static Python/TypeScript runtimes, fetched by the sandboxed frame (no session)
   "/api/webhooks/(.*)",   // Clerk webhook must be public
 ])
 

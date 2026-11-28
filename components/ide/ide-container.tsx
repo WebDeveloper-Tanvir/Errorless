@@ -6,8 +6,13 @@ import { CodeEditorIDE } from "./code-editor-ide"
 import { BottomPanel } from "./bottom-panel"
 import { CommandPalette } from "./command-palette"
 import { FileSystem } from "@/lib/file-system"
+import { detectLanguage } from "@/lib/ide/language"
+import { flattenProject } from "@/lib/ide/project"
 import { ErrorlessChatbotPanel } from "./errorless-chatbot-panel"
-import { Code2, PanelLeftOpen, PanelRightOpen, X } from "lucide-react"
+import { PreviewPane } from "./preview-pane"
+import { useIdeRuntime } from "./use-ide-runtime"
+import { terminalText } from "@/lib/ide/events"
+import { Code2, Globe, PanelLeftOpen, PanelRightOpen, Play, Square, X } from "lucide-react"
 import Link from "next/link"
 
 export function IDEContainer() {
@@ -18,11 +23,41 @@ export function IDEContainer() {
   const [cmdOpen, setCmdOpen]        = useState(false)
   const [showExplorer, setShowExplorer] = useState(true)
   const [showChat, setShowChat]      = useState(true)
+  const getTree = useCallback(() => fileSystem.getFiles(), [fileSystem])
+  const rt = useIdeRuntime(getTree)
+  const [selection, setSelection] = useState<{ text: string; start: number; end: number } | null>(null)
+
+  /** Context for the AI assistant, read at the moment an action runs. */
+  const assistantContext = useCallback(() => {
+    const f = selectedFile
+    const evs = rt.events
+    const lastCmd = [...evs].map((e) => e.kind).lastIndexOf("command")
+    const sinceRun = evs.slice(lastCmd + 1)
+    const errLines = sinceRun.filter((e) => e.kind === "stderr" || e.kind === "error").map((e) => e.text)
+    const ctx = {
+      filename: f?.name,
+      language: f ? detectLanguage(f.name).label : undefined,
+      code: f ? flattenProject(fileSystem.getFiles()).find((x) => x.id === f.id)?.content ?? f.content : undefined,
+      selection: selection?.text,
+      error: errLines.join("\n") || undefined,
+      terminal: evs.slice(-40).map(terminalText).join("\n") || undefined,
+    }
+    return { ctx, scope: f ? { fileId: f.id, fileName: f.name, selection: selection ?? undefined } : undefined }
+  }, [selectedFile, selection, rt.events, fileSystem])
+
+  const getFileContent = useCallback((id: string) => flattenProject(fileSystem.getFiles()).find((x) => x.id === id)?.content ?? null, [fileSystem])
+  const applyToFile = useCallback((id: string, next: string) => {
+    fileSystem.updateFileContent(id, next)
+    setSelection(null)
+    setSelectedFile((f) => (f && f.id === id ? { ...f, content: next } : f))
+    setOpenFiles((p) => p.map((f) => (f.id === id ? { ...f, content: next } : f)))
+  }, [fileSystem])
 
   const handleSelectFile = useCallback((file: FileNode) => {
     setSelectedFile(file)
+    rt.setActive(file.id)
     if (!openFiles.find(f => f.id === file.id)) setOpenFiles(p => [...p, file])
-  }, [openFiles])
+  }, [openFiles, rt])
 
   const handleCreateFile = useCallback((parentId: string, name: string) => {
     const f = fileSystem.createFile(parentId, name)
@@ -58,7 +93,7 @@ export function IDEContainer() {
   // Language badge color
   const langColor: Record<string, string> = {
     python: "#00c9a7", javascript: "#ffd166", typescript: "#00b4d8",
-    java: "#ff6b6b", cpp: "#4361ee", rust: "#ff9f43",
+    java: "#ff6b6b", cpp: "#4361ee", c: "#4361ee", rust: "#ff9f43", html: "#ff7a45", css: "#8b5cf6",
   }
 
   return (
@@ -109,6 +144,27 @@ export function IDEContainer() {
             }}>
             <PanelRightOpen size={12} /> AI Chat
           </button>
+          <button onClick={() => rt.setPreviewOpen(!rt.previewOpen)} aria-pressed={rt.previewOpen}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-semibold transition-all"
+            style={{
+              background: rt.previewOpen ? "rgba(0,201,167,0.12)" : "transparent",
+              color: rt.previewOpen ? "#00c9a7" : "rgba(200,230,220,0.35)",
+              border: `1px solid ${rt.previewOpen ? "rgba(0,201,167,0.25)" : "transparent"}`,
+            }}>
+            <Globe size={12} /> Preview
+          </button>
+          <span className="w-px h-4 mx-1" style={{ background: "rgba(0,201,167,0.15)" }} />
+          <button onClick={() => selectedFile && void rt.run({ id: selectedFile.id })}
+            disabled={!selectedFile || rt.running} title={selectedFile ? `Run ${selectedFile.name}` : "Open a file to run it"}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-semibold transition-all disabled:opacity-40"
+            style={{ background: "rgba(0,207,255,0.14)", color: "#00CFFF", border: "1px solid rgba(0,207,255,0.3)" }}>
+            <Play size={12} /> Run
+          </button>
+          <button onClick={rt.stop} disabled={!rt.running} title="Stop execution"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-semibold transition-all disabled:opacity-40"
+            style={{ background: "rgba(255,77,109,0.1)", color: "#ff4d6d", border: "1px solid rgba(255,77,109,0.25)" }}>
+            <Square size={11} /> Stop
+          </button>
         </div>
 
         {/* Right: file name indicator */}
@@ -147,8 +203,7 @@ export function IDEContainer() {
               style={{ borderBottom: "1px solid rgba(0,201,167,0.1)", background: "rgba(2,10,6,0.7)" }}>
               {openFiles.map(file => {
                 const isActive = selectedFile?.id === file.id
-                const ext = file.name.split(".").pop() ?? ""
-                const lang = file.language ?? ext
+                const lang = detectLanguage(file.name).id
                 const dotColor = langColor[lang] ?? "#00c9a7"
                 return (
                   <div
@@ -197,6 +252,7 @@ export function IDEContainer() {
                 file={selectedFile}
                 onContentChange={handleContentChange}
                 onClose={() => selectedFile && handleCloseFile(selectedFile.id)}
+                onSelectionChange={setSelection}
               />
             ) : (
               // Welcome screen
@@ -227,18 +283,31 @@ export function IDEContainer() {
 
           {/* ── Bottom panel ─────────────────────────────────────── */}
           <BottomPanel
-            currentLanguage={selectedFile?.language || "python"}
-            currentCode={selectedFile?.content || ""}
-            currentFile={selectedFile?.name}
+            events={rt.events}
+            problems={rt.problems}
+            running={rt.running}
+            onCommand={rt.command}
+            onClearProblems={rt.clearProblems}
           />
         </div>
 
+        <PreviewPane
+          preview={rt.preview}
+          open={rt.previewOpen}
+          running={rt.running}
+          iframeRef={rt.iframeRef}
+          onClose={() => rt.setPreviewOpen(false)}
+          onRefresh={rt.refresh}
+          onStop={rt.stop}
+        />
+
         {/* AI Chatbot panel */}
         {showChat && (
-          <div className="w-72 shrink-0 overflow-hidden">
+          <div className="w-[340px] shrink-0 overflow-hidden">
             <ErrorlessChatbotPanel
-              selectedCode={selectedFile?.content}
-              selectedLanguage={selectedFile?.language}
+              getContext={assistantContext}
+              getFileContent={getFileContent}
+              onApply={applyToFile}
             />
           </div>
         )}
