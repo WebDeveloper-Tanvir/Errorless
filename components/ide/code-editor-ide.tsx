@@ -5,6 +5,7 @@ import type React from "react"
 import { useState, useEffect, useCallback, useRef } from "react"
 import dynamic from "next/dynamic"
 import { X } from "lucide-react"
+import { detectLanguage } from "@/lib/ide/language"
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
   ssr: false,
@@ -24,37 +25,11 @@ interface CodeEditorIDEProps {
   } | null
   onContentChange: (content: string) => void
   onClose: () => void
+  /** Reports the selected text with its character offsets (null when nothing is selected). */
+  onSelectionChange?: (sel: { text: string; start: number; end: number } | null) => void
 }
 
-const languageExtensions: Record<string, string> = {
-  py: "python",
-  js: "javascript",
-  ts: "typescript",
-  jsx: "javascript",
-  tsx: "typescript",
-  java: "java",
-  cpp: "cpp",
-  c: "c",
-  swift: "swift",
-  go: "go",
-  rs: "rust",
-  php: "php",
-  rb: "ruby",
-  sql: "sql",
-  html: "html",
-  css: "css",
-  json: "json",
-  xml: "xml",
-  yaml: "yaml",
-  md: "markdown",
-}
-
-function getLanguageFromFilename(filename: string, fallback = "python"): string {
-  const ext = filename.split(".").pop()?.toLowerCase()
-  return (ext && languageExtensions[ext]) || fallback
-}
-
-export function CodeEditorIDE({ file, onContentChange, onClose }: CodeEditorIDEProps) {
+export function CodeEditorIDE({ file, onContentChange, onClose, onSelectionChange }: CodeEditorIDEProps) {
   const [fontSize, setFontSize] = useState(14)
   const [theme, setTheme] = useState("vs-dark")
 
@@ -84,7 +59,7 @@ export function CodeEditorIDE({ file, onContentChange, onClose }: CodeEditorIDEP
     )
   }
 
-  const language = getLanguageFromFilename(file.name, file.language || "python")
+  const language = detectLanguage(file.name).monaco
 
   return (
     <div className="flex-1 flex flex-col bg-background h-full">
@@ -133,6 +108,14 @@ export function CodeEditorIDE({ file, onContentChange, onClose }: CodeEditorIDEP
           language={language}
           value={file.content ?? ""}
           onChange={handleEditorChange}
+          onMount={(editor) => {
+            editor.onDidChangeCursorSelection(() => {
+              const model = editor.getModel()
+              const sel = editor.getSelection()
+              if (!model || !sel || sel.isEmpty()) return onSelectionChange?.(null)
+              onSelectionChange?.({ text: model.getValueInRange(sel), start: model.getOffsetAt(sel.getStartPosition()), end: model.getOffsetAt(sel.getEndPosition()) })
+            })
+          }}
           theme={theme}
           options={{
             minimap: { enabled: true },

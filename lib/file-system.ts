@@ -1,5 +1,6 @@
 // In-memory file system for the IDE
 import type { FileNode } from "@/components/ide/file-explorer"
+import { detectLanguage, starterContent } from "@/lib/ide/language"
 
 export class FileSystem {
   private files: FileNode[] = []
@@ -129,13 +130,13 @@ for (let i = 0; i < 10; i++) {
     return null
   }
 
-  createFile(parentId: string, name: string, language = "python"): FileNode {
+  createFile(parentId: string, name: string, language = detectLanguage(name).id): FileNode {
     const newFile: FileNode = {
       id: String(this.nextId++),
       name,
       type: "file",
       language,
-      content: `// New file: ${name}\n`,
+      content: starterContent(name),
     }
 
     const parent = this.getFileById(parentId)

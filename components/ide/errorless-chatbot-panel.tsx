@@ -1,503 +1,262 @@
 "use client"
 
-import { useState, useRef, useEffect, useCallback } from "react"
-import {
-  Send, Trash2, Copy, ChevronDown, Bot, Sparkles, Zap, Bug, BookOpen,
-  Paperclip, X, FileCode, FileText, AlertCircle, CheckCircle2, AlertTriangle,
-  Upload, BarChart3,
-} from "lucide-react"
-import { ErrorlessChatbot, type ChatMessage } from "@/lib/errorless-chatbot"
-import { analyzeCode, formatAnalysisAsMarkdown, type AnalysisResult } from "@/lib/code-analyzer"
+import { useCallback, useEffect, useRef, useState } from "react"
 import ReactMarkdown from "react-markdown"
+import { useUser } from "@clerk/nextjs"
+import {
+  AlertCircle, Bot, ChevronDown, Cloud, Cpu, Paperclip, RefreshCw, RotateCcw, Send, Settings2, Square, Trash2, Plus, Sparkles,
+} from "lucide-react"
+import { ACTIONS, type ActionContext, type ActionId } from "@/lib/ide/ai/actions"
+import { LOCAL_MODELS, approxDownloadMB, fmtGB } from "@/lib/ide/ai/models"
+import { analyzeCode, formatAnalysisAsMarkdown } from "@/lib/code-analyzer"
+import { useIdeChat, type ApplyScope, type UiMessage } from "./use-ide-chat"
+import { ChatCodeBlock } from "./chat-code-block"
+import { ApplyFixDialog, type PendingApply } from "./apply-fix-dialog"
 
-interface ErrorlessChatbotPanelProps {
-  selectedCode?: string
-  selectedLanguage?: string
+export interface AssistantContext { ctx: ActionContext; scope?: ApplyScope }
+interface Props {
+  /** Current editor/terminal context, read at the moment an action runs. */
+  getContext: () => AssistantContext
+  /** Current content of a file, to build and verify a diff. */
+  getFileContent: (fileId: string) => string | null
+  /** Writes new content into the editor. Only called after the user confirms the diff. */
+  onApply: (fileId: string, next: string) => void
 }
 
-interface AttachedFile {
-  id:       string
-  name:     string
-  content:  string
-  size:     number
-  language: string
-  result?:  AnalysisResult
-}
+const MONO = "'JetBrains Mono', ui-monospace, monospace"
+const SUPPORTED_EXTS = [".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".cpp", ".c", ".go", ".rs", ".rb", ".php", ".swift", ".html", ".css", ".sql", ".txt", ".md"]
 
-let _id = 200
-const nid = () => String(++_id)
+export function ErrorlessChatbotPanel({ getContext, getFileContent, onApply }: Props) {
+  const { user } = useUser()
+  const chat = useIdeChat(user?.id ?? null)
+  const [input, setInput] = useState("")
+  const [showSetup, setShowSetup] = useState(false)
+  const [showActions, setShowActions] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [pending, setPending] = useState<PendingApply | null>(null)
+  const end = useRef<HTMLDivElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
-function fmtSize(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-}
+  useEffect(() => { end.current?.scrollIntoView({ behavior: "smooth", block: "end" }) }, [chat.messages])
 
-function fileIcon(name: string) {
-  const ext = name.split(".").pop()?.toLowerCase()
-  if (["js","jsx","ts","tsx","py","java","cpp","c","go","rs","rb"].includes(ext ?? ""))
-    return <FileCode size={12} className="text-[#00c9a7]" />
-  return <FileText size={12} className="text-[rgba(200,230,220,0.5)]" />
-}
+  const ready = chat.mode === "cloud" || chat.loadedKey !== null
+  const needsSetup = !ready && chat.messages.length === 0
+  const model = chat.model!
 
-function scoreColor(s: number) {
-  if (s >= 80) return "#00c9a7"
-  if (s >= 60) return "#ffd166"
-  return "#ff4d6d"
-}
-
-const SUPPORTED_EXTS = [".py",".js",".ts",".jsx",".tsx",".java",".cpp",".c",".go",".rs",".rb",".php",".swift",".html",".css",".sql",".txt",".md"]
-
-// ── Component ─────────────────────────────────────────────────────────────
-export function ErrorlessChatbotPanel({ selectedCode = "", selectedLanguage = "python" }: ErrorlessChatbotPanelProps) {
-  const [messages, setMessages]     = useState<ChatMessage[]>([{
-    id: "1", role: "assistant", timestamp: new Date(),
-    content: "Hello! I'm Errorless, your AI coding assistant.\n\nI can help you with:\n\n- **Code Generation** - Write code in any language\n- **Debugging** - Fix errors and bugs\n- **Explanations** - Learn programming concepts\n- **Optimization** - Improve code performance\n- **Best Practices** - Follow industry standards\n\n📎 **Upload a code file** using the paperclip button to get a full static analysis with error detection!\n\nWhat would you like help with?",
-  }])
-  const [input, setInput]           = useState("")
-  const [isLoading, setIsLoading]   = useState(false)
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [showNLP, setShowNLP]       = useState(false)
-  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
-  const [dragOver, setDragOver]     = useState(false)
-  const [chatbot]                   = useState(() => new ErrorlessChatbot())
-
-  const endRef     = useRef<HTMLDivElement>(null)
-  const fileRef    = useRef<HTMLInputElement>(null)
-  const inputRef   = useRef<HTMLInputElement>(null)
-
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }) }, [messages])
-
-  // ── Read & analyze file ────────────────────────────────────────────────
-  const processFile = useCallback(async (file: File) => {
-    if (file.size > 500 * 1024) {
-      addMessage("assistant", `⚠️ File **${file.name}** is too large (max 500 KB). Please upload a smaller file.`)
-      return
-    }
-
-    const ext = "." + (file.name.split(".").pop()?.toLowerCase() ?? "")
-    if (!SUPPORTED_EXTS.includes(ext)) {
-      addMessage("assistant", `⚠️ Unsupported file type **${ext}**.\n\nSupported: ${SUPPORTED_EXTS.join(", ")}`)
-      return
-    }
-
-    setIsAnalyzing(true)
-    addMessage("user", `📎 Uploaded \`${file.name}\` (${fmtSize(file.size)}) for analysis`)
-
-    const content = await file.text()
-    const result  = analyzeCode(content, file.name)
-
-    const attached: AttachedFile = {
-      id: nid(), name: file.name, content,
-      size: file.size, language: result.language, result,
-    }
-    setAttachedFiles(p => [...p, attached])
-
-    // Format and add analysis as assistant message
-    await new Promise(r => setTimeout(r, 600))  // simulate thinking
-    const analysisMarkdown = formatAnalysisAsMarkdown(result)
-    addMessage("assistant", analysisMarkdown, attached)
-    setIsAnalyzing(false)
-  }, [])
-
-  const addMessage = (role: "user" | "assistant", content: string, file?: AttachedFile) => {
-    const msg: ChatMessage & { attachedFile?: AttachedFile } = {
-      id: nid(), role, content, timestamp: new Date(),
-      ...(file ? { attachedFile: file } : {})
-    }
-    setMessages(p => [...p, msg as ChatMessage])
-  }
-
-  // ── File input handler ─────────────────────────────────────────────────
-  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? [])
-    files.forEach(processFile)
-    e.target.value = ""
-  }
-
-  // ── Drag & drop ────────────────────────────────────────────────────────
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    setDragOver(false)
-    const files = Array.from(e.dataTransfer.files)
-    files.forEach(processFile)
-  }, [processFile])
-
-  // ── Chat send ──────────────────────────────────────────────────────────
-  const send = async () => {
-    if (!input.trim()) return
-    const text = input.trim()
-    addMessage("user", text)
+  const submit = useCallback(async () => {
+    const t = input.trim()
+    if (!t) return
     setInput("")
-    setIsLoading(true)
-    try {
-      const res = await chatbot.processMessage(text)
-      setMessages(p => [...p, res])
-    } catch (err) {
-      addMessage("assistant", `Error: ${err instanceof Error ? err.message : "Unknown error"}`)
-    } finally { setIsLoading(false) }
+    const { scope } = getContext()
+    await chat.send(t, scope)
+  }, [input, chat, getContext])
+
+  const action = async (id: ActionId) => {
+    setShowActions(false)
+    setNotice(null)
+    const { ctx, scope } = getContext()
+    const problem = await chat.runAction(id, { ...ctx, prompt: id === "generate" ? input.trim() || undefined : undefined }, scope)
+    if (problem) setNotice(problem)
+    else if (id === "generate") setInput("")
   }
 
-  // ── Quick actions ──────────────────────────────────────────────────────
-  const quickAction = (action: string) => {
-    const prompts: Record<string, string> = {
-      debug:    `Debug this ${selectedLanguage} code:\n\`\`\`${selectedLanguage}\n${selectedCode}\n\`\`\``,
-      explain:  `Explain this ${selectedLanguage} code:\n\`\`\`${selectedLanguage}\n${selectedCode}\n\`\`\``,
-      optimize: `Optimize this ${selectedLanguage} code:\n\`\`\`${selectedLanguage}\n${selectedCode}\n\`\`\``,
+  const askApply = (m: UiMessage, code: string) => {
+    const scope = m.scope
+    if (!scope) return setNotice("Open the file you want to change, then ask again so the answer is tied to it.")
+    const current = getFileContent(scope.fileId)
+    if (current === null) return setNotice(`${scope.fileName} is no longer open.`)
+    if (scope.selection) {
+      if (current.slice(scope.selection.start, scope.selection.end) !== scope.selection.text) {
+        return setNotice("The code changed since this answer was written. Select it again and re-run the action; nothing was changed.")
+      }
+      setPending({ fileId: scope.fileId, fileName: scope.fileName, before: scope.selection.text, after: code, scopeLabel: "selected code", next: current.slice(0, scope.selection.start) + code + current.slice(scope.selection.end) })
+    } else {
+      setPending({ fileId: scope.fileId, fileName: scope.fileName, before: current, after: code, scopeLabel: "whole file", next: code })
     }
-    if (prompts[action]) { setInput(prompts[action]); inputRef.current?.focus() }
   }
 
-  const clearChat = () => {
-    setMessages([{ id: nid(), role: "assistant", timestamp: new Date(),
-      content: "Chat cleared. Upload a code file 📎 or ask me anything!" }])
-    setAttachedFiles([])
-    chatbot.clearHistory()
+  const attach = async (f: File) => {
+    const ext = "." + (f.name.split(".").pop()?.toLowerCase() ?? "")
+    if (f.size > 500 * 1024) return setNotice(`${f.name} is larger than 500 KB.`)
+    if (!SUPPORTED_EXTS.includes(ext)) return setNotice(`Unsupported file type ${ext}.`)
+    const text = await f.text()
+    chat.addNote("Static analysis (rule-based, not AI)", formatAnalysisAsMarkdown(analyzeCode(text, f.name)))
   }
 
-  const lastMsg = messages[messages.length - 1] as any
+  const pct = Math.round(chat.progress.fraction * 100)
+  const status = chat.mode === "cloud" ? { dot: "#8B5CF6", text: "Cloud AI" }
+    : chat.loadedKey ? { dot: "#22c55e", text: `Local · ${model.label}` }
+    : chat.progress.phase === "downloading" ? { dot: "#ffd166", text: `Loading ${pct}%` }
+    : { dot: "#ff4d6d", text: "No model loaded" }
 
   return (
-    <div
-      className="flex flex-col h-full"
-      style={{ background: "#030e09", borderLeft: "1px solid rgba(0,201,167,0.1)" }}
-      onDragOver={e => { e.preventDefault(); setDragOver(true) }}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={handleDrop}
-    >
-      {/* Drag-over overlay */}
-      {dragOver && (
-        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center pointer-events-none"
-          style={{ background: "rgba(0,201,167,0.06)", border: "2px dashed rgba(0,201,167,0.5)", borderRadius: 12 }}>
-          <Upload size={32} className="text-[#00c9a7] mb-2" />
-          <p className="text-sm font-bold text-[#00c9a7]">Drop to analyze</p>
+    <div className="h-full flex flex-col" style={{ background: "#080D18", borderLeft: "1px solid rgba(0,207,255,0.12)", fontFamily: "Inter, system-ui, sans-serif" }}>
+      {/* Header */}
+      <div className="flex items-center gap-2 px-3 shrink-0" style={{ height: 44, borderBottom: "1px solid rgba(0,207,255,0.1)" }}>
+        <Bot size={16} color="#00CFFF" />
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-semibold text-white leading-4">Errorless Assistant</p>
+          <p className="text-[10px] flex items-center gap-1 truncate" style={{ color: "rgba(200,225,255,0.55)" }} aria-live="polite">
+            <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: status.dot }} /> {status.text}
+            {chat.mode === "local" ? <Cpu size={10} /> : <Cloud size={10} />}
+          </p>
+        </div>
+        <button aria-label="Model and privacy settings" aria-expanded={showSetup} onClick={() => setShowSetup((s) => !s)} className="p-1.5 rounded hover:bg-white/5" style={{ color: showSetup ? "#00CFFF" : "rgba(200,225,255,0.6)" }}><Settings2 size={15} /></button>
+      </div>
+
+      {/* Setup */}
+      {(showSetup || needsSetup) && (
+        <div className="px-3 py-3 space-y-3 overflow-y-auto shrink-0 max-h-[60%]" style={{ borderBottom: "1px solid rgba(0,207,255,0.1)", background: "rgba(0,207,255,0.03)" }}>
+          <div className="flex gap-1 p-0.5 rounded-lg" style={{ background: "rgba(255,255,255,0.04)" }} role="tablist" aria-label="AI mode">
+            {(["local", "cloud"] as const).map((m) => (
+              <button key={m} role="tab" aria-selected={chat.mode === m} onClick={() => chat.setMode(m)}
+                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[11px] font-semibold rounded-md"
+                style={chat.mode === m ? { background: "rgba(0,207,255,0.15)", color: "#00CFFF" } : { color: "rgba(200,225,255,0.55)" }}>
+                {m === "local" ? <Cpu size={12} /> : <Cloud size={12} />} {m === "local" ? "Local (free)" : "Cloud"}
+              </button>
+            ))}
+          </div>
+
+          {chat.mode === "local" ? (
+            <div className="space-y-2 text-[11px]" style={{ color: "rgba(200,225,255,0.7)" }}>
+              <p>Runs a small model <b>on your device</b> with WebGPU. No account, no API key, and your code never leaves the browser. The model downloads only when you press the button; the browser then caches it.</p>
+              {chat.gpu && !chat.gpu.supported && (
+                <p role="alert" className="flex gap-2 rounded-md p-2" style={{ background: "rgba(255,77,109,0.1)", color: "#ff8fa3" }}><AlertCircle size={14} className="shrink-0 mt-0.5" />{chat.gpu.reason} You can still use Cloud mode if your plan includes it.</p>
+              )}
+              <label className="block">
+                <span className="block mb-1 font-semibold text-white">Model</span>
+                <select value={chat.modelKey} onChange={(e) => chat.setModelKey(e.target.value)} disabled={chat.progress.phase === "downloading"}
+                  className="w-full rounded-md px-2 py-1.5 text-[11px] text-white" style={{ background: "#0b1220", border: "1px solid rgba(0,207,255,0.2)" }}>
+                  {LOCAL_MODELS.map((m) => <option key={m.key} value={m.key}>{m.label} · ~{fmtGB(m.vramMB)} GPU memory</option>)}
+                </select>
+              </label>
+              <p>{model.note} Download ≈ {fmtGB(approxDownloadMB(model))}; needs about {fmtGB(model.vramMB)} of free GPU memory{chat.gpu?.adapter ? ` (detected: ${chat.gpu.adapter})` : ""}. Smaller models are faster but make more mistakes.</p>
+              {chat.progress.phase === "downloading" && (
+                <div>
+                  <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.08)" }} role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><div className="h-full" style={{ width: `${pct}%`, background: "linear-gradient(90deg,#00CFFF,#8B5CF6)" }} /></div>
+                  <p className="mt-1 truncate font-mono" style={{ fontSize: 10 }}>{chat.progress.text}</p>
+                </div>
+              )}
+              {chat.progress.phase === "error" && <p role="alert" className="rounded-md p-2" style={{ background: "rgba(255,77,109,0.1)", color: "#ff8fa3" }}>{chat.progress.text}</p>}
+              <div className="flex gap-2">
+                <button onClick={() => void chat.loadLocal()} disabled={chat.progress.phase === "downloading" || chat.gpu?.supported === false || chat.loadedKey === chat.modelKey}
+                  className="flex-1 py-1.5 rounded-md text-[11px] font-semibold disabled:opacity-40" style={{ background: "#00CFFF", color: "#080D18" }}>
+                  {chat.loadedKey === chat.modelKey ? "Loaded" : chat.progress.phase === "downloading" ? "Loading…" : "Download & load"}
+                </button>
+                {chat.loadedKey && <button onClick={() => void chat.unloadLocal()} className="px-3 py-1.5 rounded-md text-[11px] text-gray-300 hover:bg-white/5" style={{ border: "1px solid rgba(255,255,255,0.12)" }}>Unload</button>}
+              </div>
+            </div>
+          ) : (
+            <p className="text-[11px]" style={{ color: "rgba(200,225,255,0.7)" }}>Cloud AI is answered by a server-side model. It needs sign-in and a Dev Mode plan, and has per-minute and daily limits. Your conversation is sent to our server and the model provider (secrets are redacted first). No API key is ever stored in the browser. If it is unavailable you will see the exact reason here.</p>
+          )}
+
+          <label className="flex items-start gap-2 text-[11px] cursor-pointer" style={{ color: "rgba(200,225,255,0.7)" }}>
+            <input type="checkbox" checked={chat.saveHistory} onChange={(e) => chat.setSaveHistory(e.target.checked)} className="mt-0.5" />
+            <span>Remember conversations on this device. Off by default. When on, your questions and the code you sent are saved in this browser only; turning it off deletes them.</span>
+          </label>
         </div>
       )}
 
-      {/* ── Header ────────────────────────────────────────────────── */}
-      <div className="px-4 py-3 shrink-0"
-        style={{ borderBottom: "1px solid rgba(0,201,167,0.1)", background: "rgba(2,8,5,0.9)" }}>
-        <div className="flex items-center gap-2.5">
-          <div className="relative">
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center"
-              style={{ background: "linear-gradient(135deg, rgba(0,201,167,0.2), rgba(67,97,238,0.2))", border: "1px solid rgba(0,201,167,0.25)" }}>
-              <Bot size={14} className="text-[#00c9a7]" />
-            </div>
-            <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#00c9a7]"
-              style={{ boxShadow: "0 0 6px rgba(0,201,167,0.8)" }} />
-          </div>
-          <div className="flex-1">
-            <p className="text-xs font-bold text-white tracking-wide">Errorless AI Assistant</p>
-            <p className="text-[10px] text-[rgba(200,230,220,0.4)]">
-              {isAnalyzing ? "Analyzing code…" : "Your coding companion"}
-            </p>
-          </div>
-          {/* Upload button in header */}
-          <button
-            onClick={() => fileRef.current?.click()}
-            title="Upload code file for analysis"
-            className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold transition-all"
-            style={{ background: "rgba(0,201,167,0.08)", border: "1px solid rgba(0,201,167,0.2)", color: "#00c9a7" }}
-            onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,201,167,0.15)"}
-            onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,201,167,0.08)"}
-          >
-            <Paperclip size={11} /> Analyze
-          </button>
-        </div>
-
-        {/* Quick actions */}
-        {selectedCode && (
-          <div className="flex gap-1.5 mt-3 flex-wrap">
-            {[
-              { id: "debug",    label: "Debug",    icon: <Bug size={10} /> },
-              { id: "explain",  label: "Explain",  icon: <BookOpen size={10} /> },
-              { id: "optimize", label: "Optimize", icon: <Zap size={10} /> },
-            ].map(({ id, label, icon }) => (
-              <button key={id} onClick={() => quickAction(id)}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-semibold tracking-wide transition-all"
-                style={{ border: "1px solid rgba(0,201,167,0.2)", background: "rgba(0,201,167,0.06)", color: "rgba(200,230,220,0.7)" }}
-                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,201,167,0.12)"; (e.currentTarget as HTMLButtonElement).style.color = "#00c9a7" }}
-                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,201,167,0.06)"; (e.currentTarget as HTMLButtonElement).style.color = "rgba(200,230,220,0.7)" }}
-              >
-                {icon}{label}
+      {/* Actions */}
+      <div className="px-3 py-2 shrink-0 relative" style={{ borderBottom: "1px solid rgba(0,207,255,0.08)" }}>
+        <button onClick={() => setShowActions((s) => !s)} aria-expanded={showActions} className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-[11px] font-semibold" style={{ background: "rgba(139,92,246,0.12)", color: "#b79cff", border: "1px solid rgba(139,92,246,0.3)" }}>
+          <span className="flex items-center gap-1.5"><Sparkles size={12} /> Assistant actions</span><ChevronDown size={13} />
+        </button>
+        {showActions && (
+          <div className="absolute left-3 right-3 top-full mt-1 z-20 rounded-lg overflow-hidden shadow-xl" style={{ background: "#0b1220", border: "1px solid rgba(0,207,255,0.2)" }} role="menu">
+            {ACTIONS.map((a) => (
+              <button key={a.id} role="menuitem" onClick={() => void action(a.id)} className="w-full text-left px-3 py-1.5 hover:bg-white/5">
+                <span className="block text-[12px] text-white">{a.label}</span><span className="block text-[10px]" style={{ color: "rgba(200,225,255,0.5)" }}>{a.hint}</span>
               </button>
             ))}
           </div>
         )}
+        {notice && <p role="status" className="mt-2 text-[11px] flex gap-1.5" style={{ color: "#ffd166" }}><AlertCircle size={13} className="shrink-0" />{notice}</p>}
       </div>
 
-      {/* ── Messages ──────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3 min-h-0">
-        {messages.map(msg => {
-          const msgAny = msg as any
-          return (
-            <div key={msg.id} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-              {msg.role === "assistant" && (
-                <div className="w-6 h-6 rounded-md flex items-center justify-center mr-2 mt-0.5 shrink-0"
-                  style={{ background: "linear-gradient(135deg, rgba(0,201,167,0.2), rgba(67,97,238,0.2))", border: "1px solid rgba(0,201,167,0.2)" }}>
-                  <Sparkles size={10} className="text-[#00c9a7]" />
-                </div>
-              )}
-              <div className="max-w-[88%] group relative">
-                {/* Attached file badge */}
-                {msgAny.attachedFile && (
-                  <FileAnalysisBadge file={msgAny.attachedFile as AttachedFile} />
-                )}
-
-                <div
-                  className="px-3 py-2.5 rounded-xl text-xs leading-relaxed"
-                  style={msg.role === "user" ? {
-                    background: "linear-gradient(135deg, rgba(0,201,167,0.18), rgba(67,97,238,0.12))",
-                    border: "1px solid rgba(0,201,167,0.22)",
-                    color: "rgba(200,230,220,0.9)",
-                    borderBottomRightRadius: 4,
-                  } : {
-                    background: "rgba(4,18,12,0.9)",
-                    border: "1px solid rgba(0,201,167,0.08)",
-                    color: "rgba(200,230,220,0.8)",
-                    borderBottomLeftRadius: 4,
-                  }}
-                >
-                  <ReactMarkdown
-                    components={{
-                      h2: ({ children }) => <h2 className="text-sm font-bold mb-2 mt-1" style={{ color: "#00c9a7" }}>{children}</h2>,
-                      h3: ({ children }) => <h3 className="text-xs font-bold mb-1.5 mt-2" style={{ color: "rgba(200,230,220,0.9)" }}>{children}</h3>,
-                      strong: ({ children }) => <strong className="font-bold" style={{ color: "#00c9a7" }}>{children}</strong>,
-                      code: ({ node, inline, children, ...props }: any) =>
-                        inline ? (
-                          <code className="px-1 py-0.5 rounded text-[11px] font-mono"
-                            style={{ background: "rgba(0,201,167,0.1)", color: "#00c9a7" }} {...props}>
-                            {children}
-                          </code>
-                        ) : (
-                          <div className="mt-2 mb-1">
-                            <pre className="p-2.5 rounded-lg overflow-x-auto text-[11px] font-mono"
-                              style={{ background: "rgba(0,0,0,0.5)", border: "1px solid rgba(0,201,167,0.1)", color: "#00c9a7" }}>
-                              <code {...props}>{children}</code>
-                            </pre>
-                          </div>
-                        ),
-                      blockquote: ({ children }) => (
-                        <div className="pl-3 mt-1 mb-1 text-[11px]"
-                          style={{ borderLeft: "2px solid rgba(0,201,167,0.3)", color: "rgba(200,230,220,0.55)" }}>
-                          {children}
-                        </div>
-                      ),
-                      li: ({ children }) => <li className="ml-3 list-disc mb-0.5">{children}</li>,
-                      ul: ({ children }) => <ul className="mb-2 space-y-0.5">{children}</ul>,
-                      p: ({ children }) => <div className="mb-1.5 last:mb-0">{children}</div>,
-                    }}
-                  >
-                    {msg.content}
-                  </ReactMarkdown>
-                </div>
-
-                {msg.role === "assistant" && (
-                  <button
-                    onClick={() => navigator.clipboard.writeText(msg.content)}
-                    className="absolute -bottom-1 right-1 w-5 h-5 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                    style={{ background: "rgba(0,201,167,0.1)", border: "1px solid rgba(0,201,167,0.2)" }}
-                  >
-                    <Copy size={9} className="text-[#00c9a7]" />
-                  </button>
-                )}
-              </div>
-            </div>
-          )
-        })}
-
-        {/* Thinking / analyzing indicator */}
-        {(isLoading || isAnalyzing) && (
-          <div className="flex justify-start">
-            <div className="w-6 h-6 rounded-md flex items-center justify-center mr-2 shrink-0"
-              style={{ background: "linear-gradient(135deg, rgba(0,201,167,0.2), rgba(67,97,238,0.2))", border: "1px solid rgba(0,201,167,0.2)" }}>
-              <Sparkles size={10} className="text-[#00c9a7]" />
-            </div>
-            <div className="px-3 py-2.5 rounded-xl rounded-bl-sm"
-              style={{ background: "rgba(4,18,12,0.9)", border: "1px solid rgba(0,201,167,0.08)" }}>
-              <div className="flex items-center gap-2">
-                <div className="flex gap-1.5">
-                  {[0, 0.2, 0.4].map(delay => (
-                    <div key={delay} className="w-1.5 h-1.5 rounded-full animate-bounce"
-                      style={{ background: "#00c9a7", animationDelay: `${delay}s`, boxShadow: "0 0 6px rgba(0,201,167,0.5)" }} />
-                  ))}
-                </div>
-                <span className="text-[10px] font-mono" style={{ color: "rgba(200,230,220,0.4)" }}>
-                  {isAnalyzing ? "Analyzing code…" : "Thinking…"}
-                </span>
-              </div>
-            </div>
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3 min-h-0" aria-live="polite" data-testid="chat-messages">
+        {chat.messages.length === 0 && (
+          <div className="text-[12px] space-y-2" style={{ color: "rgba(200,225,255,0.65)" }}>
+            <p className="text-white font-semibold">Ask about the code in your editor.</p>
+            <p>Use <b>Assistant actions</b> for Explain, Find Bugs, Fix This Error, Optimize, Refactor, Documentation, Unit Tests or Terminal output. Answers are suggestions: nothing changes in your files until you review a diff and confirm.</p>
+            {!ready && <p style={{ color: "#ffd166" }}>No model is available yet. Open the settings above: download a local model (free), or switch to Cloud if your plan includes it.</p>}
           </div>
         )}
-        <div ref={endRef} />
+        {chat.messages.map((m, i) => (
+          <Message key={m.id} m={m} isLast={i === chat.messages.length - 1} busy={chat.busy} onApply={askApply} onRetry={() => void chat.retry()} onSetup={() => setShowSetup(true)} />
+        ))}
+        <div ref={end} />
       </div>
 
-      {/* ── Upload drop zone hint (only when no files) ─────────────── */}
-      {attachedFiles.length === 0 && (
-        <div
-          className="mx-3 mb-2 rounded-xl border-dashed flex items-center justify-center gap-2 cursor-pointer transition-all shrink-0"
-          style={{ border: "1px dashed rgba(0,201,167,0.2)", background: "rgba(0,201,167,0.03)", padding: "10px 12px" }}
-          onClick={() => fileRef.current?.click()}
-          onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = "rgba(0,201,167,0.4)"; (e.currentTarget as HTMLDivElement).style.background = "rgba(0,201,167,0.06)" }}
-          onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = "rgba(0,201,167,0.2)"; (e.currentTarget as HTMLDivElement).style.background = "rgba(0,201,167,0.03)" }}
-        >
-          <Upload size={14} className="text-[#00c9a7] shrink-0" />
-          <div>
-            <p className="text-[10px] font-semibold text-[rgba(200,230,220,0.6)]">Drop or click to upload code</p>
-            <p className="text-[9px] text-[rgba(200,230,220,0.3)]">.py .js .ts .java .cpp .go .rs + more</p>
-          </div>
+      {/* Composer */}
+      <div className="px-3 pb-3 pt-2 shrink-0" style={{ borderTop: "1px solid rgba(0,207,255,0.1)" }}>
+        <div className="flex items-end gap-1.5 rounded-xl px-2 py-1.5" style={{ background: "#0b1220", border: "1px solid rgba(0,207,255,0.2)" }}>
+          <button aria-label="Attach a file for static analysis" title="Static analysis of a file (rule-based, not AI)" onClick={() => fileRef.current?.click()} className="p-1.5 rounded hover:bg-white/5" style={{ color: "rgba(200,225,255,0.6)" }}><Paperclip size={14} /></button>
+          <input ref={fileRef} type="file" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void attach(f); e.target.value = "" }} />
+          <textarea value={input} onChange={(e) => setInput(e.target.value)} rows={1} placeholder="Ask about your code…" aria-label="Message"
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submit() } }}
+            className="flex-1 bg-transparent resize-none outline-none text-[12px] text-white py-1.5 max-h-28 placeholder:text-gray-600" />
+          {chat.busy
+            ? <button aria-label="Stop generating" onClick={chat.stop} className="p-1.5 rounded-md" style={{ background: "rgba(255,77,109,0.15)", color: "#ff4d6d" }}><Square size={14} /></button>
+            : <button aria-label="Send" onClick={() => void submit()} disabled={!input.trim()} className="p-1.5 rounded-md disabled:opacity-40" style={{ background: "#00CFFF", color: "#080D18" }}><Send size={14} /></button>}
         </div>
-      )}
-
-      {/* ── NLP Analysis ──────────────────────────────────────────── */}
-      <div className="shrink-0 px-3 py-1"
-        style={{ borderTop: "1px solid rgba(0,201,167,0.08)" }}>
-        <button
-          onClick={() => setShowNLP(s => !s)}
-          className="w-full flex items-center justify-between px-2 py-1 rounded-lg text-[10px] font-semibold tracking-widest uppercase transition-colors"
-          style={{ color: "rgba(200,230,220,0.35)" }}
-          onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.color = "rgba(200,230,220,0.6)"}
-          onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.color = "rgba(200,230,220,0.35)"}
-        >
-          <span className="flex items-center gap-1.5"><BarChart3 size={10} /> NLP Analysis</span>
-          <ChevronDown size={11} className={`transition-transform duration-200 ${showNLP ? "rotate-180" : ""}`} />
-        </button>
-        {showNLP && lastMsg?.nlpAnalysis && (
-          <div className="mt-1 mx-1 p-2 rounded-lg space-y-1 text-[10px] font-mono"
-            style={{ background: "rgba(0,201,167,0.05)", border: "1px solid rgba(0,201,167,0.1)" }}>
-            {[["Intent", lastMsg.nlpAnalysis.intent], ["Language", lastMsg.nlpAnalysis.detectedLanguage], ["Sentiment", lastMsg.nlpAnalysis.sentiment]].map(([k, v]) => (
-              <div key={k} className="flex gap-1">
-                <span style={{ color: "rgba(200,230,220,0.4)" }}>{k}:</span>
-                <span style={{ color: "#00c9a7" }}>{v}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* ── Input area ────────────────────────────────────────────── */}
-      <div className="px-3 pb-3 pt-2 shrink-0" style={{ borderTop: "1px solid rgba(0,201,167,0.1)" }}>
-        <div className="flex gap-2 items-center">
-          {/* Attach button */}
-          <button
-            onClick={() => fileRef.current?.click()}
-            title="Upload code file"
-            className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 transition-all"
-            style={{ background: "rgba(0,201,167,0.06)", border: "1px solid rgba(0,201,167,0.18)" }}
-            onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,201,167,0.14)"}
-            onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,201,167,0.06)"}
-          >
-            <Paperclip size={13} className="text-[#00c9a7]" />
-          </button>
-
-          <input
-            ref={inputRef}
-            type="text"
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send() } }}
-            placeholder="Ask Errorless for help…"
-            disabled={isLoading || isAnalyzing}
-            className="flex-1 px-3 py-2 rounded-xl text-xs outline-none transition-all font-medium placeholder:font-normal"
-            style={{ background: "rgba(0,201,167,0.06)", border: "1px solid rgba(0,201,167,0.18)", color: "rgba(200,230,220,0.9)" }}
-            onFocus={e => (e.target as HTMLInputElement).style.borderColor = "rgba(0,201,167,0.4)"}
-            onBlur={e => (e.target as HTMLInputElement).style.borderColor = "rgba(0,201,167,0.18)"}
-          />
-
-          {/* Send */}
-          <button
-            onClick={send}
-            disabled={isLoading || isAnalyzing || !input.trim()}
-            className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 transition-all"
-            style={{
-              background: input.trim() && !isLoading && !isAnalyzing
-                ? "linear-gradient(135deg, #00c9a7, #4361ee)"
-                : "rgba(0,201,167,0.08)",
-              border: "1px solid rgba(0,201,167,0.2)",
-            }}
-          >
-            <Send size={13} className={input.trim() && !isLoading ? "text-[#030e09]" : "text-[rgba(200,230,220,0.3)]"} />
-          </button>
-        </div>
-
-        <div className="flex justify-between items-center mt-1.5">
-          <p className="text-[9px]" style={{ color: "rgba(200,230,220,0.2)" }}>
-            📎 Drag & drop code files to analyze
-          </p>
-          <button onClick={clearChat}
-            className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded transition-colors"
-            style={{ color: "rgba(200,230,220,0.3)" }}
-            onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.color = "#ff4d6d"}
-            onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.color = "rgba(200,230,220,0.3)"}
-          >
-            <Trash2 size={9} /> Clear
-          </button>
+        <div className="flex items-center justify-between mt-1.5 text-[10px]" style={{ color: "rgba(200,225,255,0.45)" }}>
+          <span>Enter to send · Shift+Enter for a new line</span>
+          <span className="flex gap-2">
+            <button onClick={() => void chat.regenerate()} disabled={chat.busy || !chat.messages.some((m) => m.role === "assistant" && !m.label?.startsWith("Static"))} className="flex items-center gap-0.5 hover:text-[#00CFFF] disabled:opacity-40"><RefreshCw size={10} />Regenerate</button>
+            <button onClick={chat.clear} disabled={chat.messages.length === 0} className="flex items-center gap-0.5 hover:text-[#00CFFF] disabled:opacity-40" aria-label="Clear conversation"><Trash2 size={10} />Clear</button>
+            <button onClick={chat.clear} className="flex items-center gap-0.5 hover:text-[#00CFFF]"><Plus size={10} />New</button>
+          </span>
         </div>
       </div>
 
-      {/* Hidden file input */}
-      <input
-        ref={fileRef}
-        type="file"
-        multiple
-        accept={SUPPORTED_EXTS.join(",")}
-        onChange={handleFileInput}
-        className="hidden"
-      />
+      {pending && <ApplyFixDialog pending={pending} onCancel={() => setPending(null)} onConfirm={() => { onApply(pending.fileId, pending.next); setPending(null); setNotice(`Applied to ${pending.fileName}. Undo with Ctrl+Z in the editor.`) }} />}
     </div>
   )
 }
 
-// ── File analysis summary badge shown above message ────────────────────────
-function FileAnalysisBadge({ file }: { file: AttachedFile }) {
-  const r = file.result
-  if (!r) return null
-  const errors   = r.issues.filter(i => i.severity === "error").length
-  const warnings = r.issues.filter(i => i.severity === "warning").length
-  const infos    = r.issues.filter(i => i.severity === "info").length
-  const color    = scoreColor(r.score)
-
+function Message({ m, isLast, busy, onApply, onRetry, onSetup }: { m: UiMessage; isLast: boolean; busy: boolean; onApply: (m: UiMessage, code: string) => void; onRetry: () => void; onSetup: () => void }) {
+  if (m.role === "user") {
+    return <div className="ml-6 rounded-xl rounded-br-sm px-3 py-2 text-[12px] text-white whitespace-pre-wrap break-words" style={{ background: "rgba(0,207,255,0.14)", border: "1px solid rgba(0,207,255,0.25)" }}>{m.content}</div>
+  }
   return (
-    <div className="mb-1.5 p-2 rounded-lg"
-      style={{ background: "rgba(0,201,167,0.05)", border: "1px solid rgba(0,201,167,0.12)" }}>
-      <div className="flex items-center gap-2 mb-1.5">
-        {fileIcon(file.name)}
-        <span className="text-[11px] font-mono font-semibold text-[rgba(200,230,220,0.8)] flex-1 truncate">{file.name}</span>
-        <span className="text-[10px] font-bold" style={{ color }}>{r.score}/100</span>
-      </div>
-
-      {/* Score bar */}
-      <div className="w-full rounded-full overflow-hidden mb-1.5" style={{ height: 3, background: "rgba(255,255,255,0.06)" }}>
-        <div className="h-full rounded-full transition-all" style={{ width: `${r.score}%`, background: color }} />
-      </div>
-
-      {/* Issue counts */}
-      <div className="flex gap-2 text-[10px] font-mono">
-        {errors > 0 && (
-          <span className="flex items-center gap-0.5" style={{ color: "#ff4d6d" }}>
-            <AlertCircle size={9} /> {errors} error{errors !== 1 ? "s" : ""}
-          </span>
-        )}
-        {warnings > 0 && (
-          <span className="flex items-center gap-0.5" style={{ color: "#ffd166" }}>
-            <AlertTriangle size={9} /> {warnings} warn{warnings !== 1 ? "s" : ""}
-          </span>
-        )}
-        {infos > 0 && (
-          <span className="flex items-center gap-0.5" style={{ color: "#00b4d8" }}>
-            <CheckCircle2 size={9} /> {infos} hint{infos !== 1 ? "s" : ""}
-          </span>
-        )}
-        {errors === 0 && warnings === 0 && (
-          <span className="flex items-center gap-0.5" style={{ color: "#00c9a7" }}>
-            <CheckCircle2 size={9} /> Clean!
-          </span>
-        )}
-        <span className="ml-auto" style={{ color: "rgba(200,230,220,0.3)" }}>
-          {r.language} · {r.lines} lines · {fmtSize(file.size)}
-        </span>
-      </div>
+    <div className="mr-2 rounded-xl rounded-bl-sm px-3 py-2 text-[12px] leading-relaxed" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", color: "rgba(230,240,255,0.92)" }}>
+      {m.label && <p className="mb-1 text-[10px] uppercase tracking-wider" style={{ color: m.label.startsWith("Static") ? "#ffd166" : "rgba(200,225,255,0.45)" }}>{m.label}</p>}
+      {m.content && (
+        <div className="prose-chat break-words">
+          <ReactMarkdown
+            components={{
+              pre: ({ children }) => <>{children}</>,
+              code: ({ className, children }) => {
+                const text = String(children).replace(/\n$/, "")
+                const block = /language-/.test(className ?? "") || text.includes("\n")
+                if (!block) return <code className="px-1 rounded text-[11px]" style={{ background: "rgba(255,255,255,0.08)", fontFamily: MONO }}>{children}</code>
+                return <ChatCodeBlock code={text} lang={/language-([\w+#-]+)/.exec(className ?? "")?.[1] ?? ""} canApply={!m.streaming && !m.label?.startsWith("Static") && !!m.scope} onApply={(c) => onApply(m, c)} />
+              },
+              h2: ({ children }) => <h3 className="mt-3 mb-1 text-[12px] font-semibold" style={{ color: "#00CFFF" }}>{children}</h3>,
+              h3: ({ children }) => <h4 className="mt-2 mb-1 text-[12px] font-semibold" style={{ color: "#8B5CF6" }}>{children}</h4>,
+              p: ({ children }) => <p className="my-1.5">{children}</p>,
+              ul: ({ children }) => <ul className="my-1.5 ml-4 list-disc">{children}</ul>,
+              ol: ({ children }) => <ol className="my-1.5 ml-4 list-decimal">{children}</ol>,
+            }}
+          >{m.content}</ReactMarkdown>
+        </div>
+      )}
+      {m.streaming && <span className="inline-block w-1.5 h-3 ml-0.5 align-middle animate-pulse" style={{ background: "#00CFFF" }} aria-label="Generating" />}
+      {m.error && (
+        <div role="alert" className="flex items-start gap-2 mt-1" style={{ color: "#ff8fa3" }}>
+          <AlertCircle size={14} className="shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <p>{m.error.message}</p>
+            <div className="mt-1.5 flex gap-2">
+              {m.error.code === "not_loaded" && <button onClick={onSetup} className="px-2 py-0.5 rounded text-[11px] font-semibold" style={{ background: "#00CFFF", color: "#080D18" }}>Open model settings</button>}
+              {m.error.retryable && isLast && !busy && <button onClick={onRetry} className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] hover:bg-white/5" style={{ border: "1px solid rgba(255,255,255,0.15)", color: "#e5eeff" }}><RotateCcw size={10} /> Retry</button>}
+            </div>
+          </div>
+        </div>
+      )}
+      {!m.streaming && m.via && !m.error && <p className="mt-1.5 text-[9px]" style={{ color: "rgba(200,225,255,0.35)" }}>{m.via === "local" ? "Generated on your device" : "Generated by cloud AI"} · AI can be wrong, so check before applying.</p>}
     </div>
   )
 }
