@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
+import { FreeTierBox } from "@/components/growth/free-tier-box"
 import { FAQ } from "@/components/faq"
 import { CTA } from "@/components/cta"
 import { SectionHeading } from "@/components/landing/section-heading"
@@ -37,6 +38,7 @@ export default function PricingPage() {
         </section>
         <FAQ />
         <CTA />
+        <div className="mx-auto max-w-3xl px-4 pb-20 sm:px-6"><FreeTierBox /></div>
       </main>
       <Footer />
     </div>

@@ -1,5 +1,5 @@
 /** Paths that must never be indexed (kept in sync with NOINDEX_PATHS in lib/seo/site.ts). */
-const NOINDEX = ["dashboard", "devmode", "profile", "editor", "ide", "admin", "sign-in", "sign-up", "auth", "login", "signup", "sso-callback", "quiz", "learn"]
+const NOINDEX = ["dashboard", "devmode", "profile", "editor", "ide", "admin", "sign-in", "sign-up", "auth", "login", "signup", "sso-callback", "invite", "s", "quiz", "learn"]
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -21,6 +21,8 @@ const nextConfig = {
       { source: "/api/:path*", headers: [robots] },
       ...NOINDEX.map((p) => ({ source: `/${p}/:path*`, headers: [robots] })),
       ...NOINDEX.map((p) => ({ source: `/${p}`, headers: [robots] })),
+      // Shared results: never cached, never leak the secret URL through the Referer header.
+      { source: "/s/:token", headers: [{ key: "Referrer-Policy", value: "no-referrer" }, { key: "Cache-Control", value: "private, no-store" }] },
       // Long-lived caching for the static brand images served from /public.
       { source: "/:file(errorless-logo.jpg|upi-qr.png|favicon.ico)", headers: [{ key: "Cache-Control", value: "public, max-age=86400, stale-while-revalidate=604800" }] },
     ]

@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { DiffView } from "./diff-view"
 import { sendFeedback } from "./use-debug-session"
+import { sendGuestFeedback } from "@/components/growth/client"
+import { ShareDialog } from "@/components/growth/share-dialog"
 
 const CERTAINTY: Record<Certainty, { label: string; hint: string; cls: string }> = {
   confirmed: { label: "Confirmed", hint: "Directly supported by evidence in what you submitted", cls: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" },
@@ -60,11 +62,14 @@ interface Props {
   originalCode: string
   language: string
   framework: string
-  onRetry: () => void
+  onRetry?: () => void
   streaming: boolean
+  /** Hand-written or shared results: no retry, no share, feedback goes to the public endpoint. */
+  readOnly?: boolean
+  feedbackSurface?: "guest_demo" | "community_example"
 }
 
-export function ResultsPanel({ result, partial, originalCode, language, framework, onRetry, streaming }: Props) {
+export function ResultsPanel({ result, partial, originalCode, language, framework, onRetry, streaming, readOnly = false, feedbackSurface }: Props) {
   const r: Partial<DebugResult> = result ?? partial ?? {}
   const done = !!result
   const [vote, setVote] = useState<null | "sent" | "failed">(null)
@@ -77,7 +82,9 @@ export function ResultsPanel({ result, partial, originalCode, language, framewor
   const unverified = evidence.filter((e) => e.verified === false).length
 
   async function submit(helpful: boolean) {
-    const ok = await sendFeedback({ helpful, certainty: r.rootCause?.certainty ?? "hypothesis", language, framework, comment: comment.trim() || undefined })
+    const ok = feedbackSurface
+      ? await sendGuestFeedback(feedbackSurface, helpful, comment)
+      : await sendFeedback({ helpful, certainty: r.rootCause?.certainty ?? "hypothesis", language, framework, comment: comment.trim() || undefined })
     setVote(ok ? "sent" : "failed")
   }
 
@@ -300,18 +307,21 @@ export function ResultsPanel({ result, partial, originalCode, language, framewor
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm font-medium text-foreground" id="helpful-label">Was this helpful?</p>
             <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={onRetry}>
-                <RefreshCw className="h-4 w-4" aria-hidden /> Try again
-              </Button>
+              {!readOnly && onRetry && (
+                <Button type="button" variant="outline" size="sm" onClick={onRetry}>
+                  <RefreshCw className="h-4 w-4" aria-hidden /> Try again
+                </Button>
+              )}
+              {!readOnly && result && <ShareDialog result={result} />}
               {vote === "sent" ? (
                 <span role="status" className="inline-flex items-center gap-1.5 px-2 text-sm text-emerald-400"><Check className="h-4 w-4" aria-hidden />Thanks for the feedback</span>
               ) : (
                 <>
                   <Button type="button" variant="outline" size="sm" aria-pressed={pending === true} onClick={() => setPending(true)}>
-                    <ThumbsUp className="h-4 w-4" aria-hidden /> Yes
+                    <ThumbsUp className="h-4 w-4" aria-hidden /> Helpful
                   </Button>
                   <Button type="button" variant="outline" size="sm" aria-pressed={pending === false} onClick={() => setPending(false)}>
-                    <ThumbsDown className="h-4 w-4" aria-hidden /> No
+                    <ThumbsDown className="h-4 w-4" aria-hidden /> Not helpful
                   </Button>
                 </>
               )}

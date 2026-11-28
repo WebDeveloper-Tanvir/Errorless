@@ -4,7 +4,8 @@
  * and never any user content (errors, code, emails, ids).
  */
 
-export const EVENTS = ["landing_view", "demo_start", "demo_result", "debug_complete", "debug_error", "signup_click", "sign_up"] as const
+export const EVENTS = ["landing_view", "demo_start", "demo_result", "debug_complete", "debug_error", "signup_click", "sign_up",
+  "debug_request", "returning_user", "share_created", "referral_conversion", "feedback_submitted", "onboarding_complete"] as const
 export type AnalyticsEvent = (typeof EVENTS)[number]
 export type PropValue = string | number | boolean
 
@@ -16,6 +17,12 @@ const ALLOWED_PROPS: Record<AnalyticsEvent, readonly string[]> = {
   debug_error: ["code", "retryable"],
   signup_click: ["source", "slug", "label"],
   sign_up: ["method"],
+  debug_request: ["language", "framework", "has_code"],
+  returning_user: ["visit_days"],
+  share_created: ["include_code", "include_evidence", "days"],
+  referral_conversion: ["outcome"],
+  feedback_submitted: ["surface", "helpful", "has_comment"],
+  onboarding_complete: ["steps_seen", "skipped"],
 }
 
 export function isAnalyticsEvent(name: string): name is AnalyticsEvent {
@@ -69,4 +76,15 @@ export function acquisitionSource(search: string, referrer: string, ownHost: str
 /** True when the visitor asked not to be tracked. */
 export function trackingDisabled(nav: { doNotTrack?: string | null } | undefined, optOut: boolean): boolean {
   return optOut || nav?.doNotTrack === "1"
+}
+
+/**
+ * Repeat-visitor logic without an identifier: the browser keeps only the last 30 calendar days it
+ * was used on (stored locally, never sent). A visit on a new day after at least one earlier day
+ * is a "returning" visit; only the count of days is reported.
+ */
+export function recordVisit(days: readonly string[], today: string): { days: string[]; returning: boolean; changed: boolean } {
+  if (days.includes(today)) return { days: [...days], returning: false, changed: false }
+  const next = [...days, today].slice(-30)
+  return { days: next, returning: days.length > 0, changed: true }
 }

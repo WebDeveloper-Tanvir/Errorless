@@ -4,6 +4,7 @@ import { Inter, JetBrains_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { ClerkClientProvider } from "@/components/clerk-provider"
 import { AnalyticsEvents } from "@/components/analytics-events"
+import { ReferralTracker } from "@/components/growth/referral-tracker"
 import { DEFAULT_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/seo/site"
 import "./globals.css"
 
@@ -67,6 +68,7 @@ export default function RootLayout({
         <ClerkClientProvider>
           {children}
           <AnalyticsEvents />
+          <ReferralTracker />
           <Analytics />
         </ClerkClientProvider>
       </body>

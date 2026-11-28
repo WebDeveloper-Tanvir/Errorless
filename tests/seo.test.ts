@@ -220,7 +220,7 @@ test("private pages: every NOINDEX path has an X-Robots-Tag header rule and a no
   const cfg = readFileSync(new URL("../next.config.mjs", import.meta.url), "utf8")
   const listed = /const NOINDEX = \[([^\]]*)\]/.exec(cfg)![1].match(/"([^"]+)"/g)!.map((s) => s.replace(/"/g, ""))
   assert.deepEqual([...listed].sort(), NOINDEX_PATHS.map((p) => p.slice(1)).sort(), "next.config.mjs NOINDEX is out of sync with lib/seo/site.ts")
-  for (const p of ["dashboard", "devmode", "profile", "editor", "ide", "admin", "sign-in", "sign-up", "auth", "quiz", "learn"]) {
+  for (const p of ["dashboard", "devmode", "profile", "editor", "ide", "admin", "sign-in", "sign-up", "auth", "invite", "quiz", "learn"]) {
     const layout = readFileSync(new URL(`../app/${p}/layout.tsx`, import.meta.url), "utf8")
     assert.ok(layout.includes("privateMetadata"), `app/${p}/layout.tsx is not noindex`)
   }
@@ -265,8 +265,8 @@ test("jsonld: FAQ, breadcrumb, list and page markup match the visible content", 
 })
 
 // ── analytics ───────────────────────────────────────────────────────────────
-test("analytics: only the five required event families exist", () => {
-  assert.deepEqual([...EVENTS].sort(), ["debug_complete", "debug_error", "demo_result", "demo_start", "landing_view", "sign_up", "signup_click"])
+test("analytics: only the known, documented events exist", () => {
+  assert.deepEqual([...EVENTS].sort(), ["debug_complete", "debug_error", "debug_request", "demo_result", "demo_start", "feedback_submitted", "landing_view", "onboarding_complete", "referral_conversion", "returning_user", "share_created", "sign_up", "signup_click"])
   assert.ok(isAnalyticsEvent("landing_view") && !isAnalyticsEvent("page_hack"))
 })
 
