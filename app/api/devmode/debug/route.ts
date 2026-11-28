@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server"
 import { getDevmodePlan } from "@/lib/devmode-plan"
 import { runDebug } from "@/lib/debug/engine"
 import { encodeSse } from "@/lib/debug/sse"
+import { getStore } from "@/lib/growth/store"
 import { LIMITS, type DebugRequest } from "@/lib/debug/types"
 
 export const runtime = "nodejs"
@@ -14,13 +15,19 @@ export const maxDuration = 60
  *   meta → partial* → result   (or error)
  * Requires sign-in and a Dev Mode plan. Uses the same GEMINI_API_KEY as the other
  * Dev Mode tools; there is no mock fallback, so a missing key is reported honestly.
- * Request content is never logged.
+ * Free accounts can use referral credits: one credit is taken once the request is valid and the
+ * AI is configured, and is given back if no result is produced. Request content is never logged.
  */
 export async function POST(req: NextRequest) {
   const { userId } = await auth()
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  if ((await getDevmodePlan(userId)) === "none") {
-    return NextResponse.json({ error: "A Dev Mode plan is required.", upgrade: true }, { status: 402 })
+  const plan = await getDevmodePlan(userId)
+  const store = getStore()
+  if (plan === "none" && (!store || (await store.getCredits(userId)) < 1)) {
+    return NextResponse.json(
+      { error: "A Dev Mode plan or an invite credit is required for AI debugging.", upgrade: true, invite: true },
+      { status: 402 },
+    )
   }
 
   const body = await req.json().catch(() => null)
@@ -50,12 +57,22 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  // Free accounts: take one credit now (atomic). Refunded below if no result is produced.
+  let creditTaken = false
+  if (plan === "none") {
+    creditTaken = (await store?.consumeCredit(userId)) ?? false
+    if (!creditTaken) {
+      return NextResponse.json({ error: "No invite credits left.", upgrade: true, invite: true }, { status: 402 })
+    }
+  }
+
   const timeout = AbortSignal.timeout(55_000)
   const signal = AbortSignal.any([req.signal, timeout])
   const encoder = new TextEncoder()
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      let gotResult = false
       try {
         for await (const event of runDebug(input, {
           apiKey,
@@ -63,6 +80,7 @@ export async function POST(req: NextRequest) {
           baseUrl: process.env.GEMINI_API_BASE || undefined,
           signal,
         })) {
+          if (event.type === "result") gotResult = true
           controller.enqueue(encoder.encode(encodeSse(event.type, event)))
         }
         if (timeout.aborted) {
@@ -77,6 +95,7 @@ export async function POST(req: NextRequest) {
           encoder.encode(encodeSse("error", { type: "error", code: "unexpected", message: "Something went wrong. Please retry.", retryable: true })),
         )
       } finally {
+        if (creditTaken && !gotResult) await store?.addCredits(userId, 1).catch(() => undefined)
         controller.close()
       }
     },

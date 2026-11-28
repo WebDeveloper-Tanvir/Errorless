@@ -1,5 +1,6 @@
 import { CONTENT_UPDATED, absoluteUrl } from "./site.ts"
 import { TOOL_PAGES, toolPath } from "./tools.ts"
+import { SHOWCASE, showcasePath } from "../growth/showcase.ts"
 
 export interface SitemapItem {
   url: string
@@ -16,6 +17,7 @@ export function getSitemapItems(): SitemapItem[] {
     { url: absoluteUrl("/pricing"), lastModified: CONTENT_UPDATED, changeFrequency: "monthly", priority: 0.6 },
     { url: absoluteUrl("/docs"), lastModified: CONTENT_UPDATED, changeFrequency: "monthly", priority: 0.6 },
     { url: absoluteUrl("/demo"), lastModified: CONTENT_UPDATED, changeFrequency: "monthly", priority: 0.5 },
+    { url: absoluteUrl("/community"), lastModified: CONTENT_UPDATED, changeFrequency: "monthly", priority: 0.7 },
   ]
   const tools: SitemapItem[] = TOOL_PAGES.map((t) => ({
     url: absoluteUrl(toolPath(t.slug)),
@@ -23,5 +25,11 @@ export function getSitemapItems(): SitemapItem[] {
     changeFrequency: "monthly",
     priority: 0.8,
   }))
-  return [...core, ...tools]
+  const examples: SitemapItem[] = SHOWCASE.map((e) => ({
+    url: absoluteUrl(showcasePath(e.slug)),
+    lastModified: CONTENT_UPDATED,
+    changeFrequency: "monthly",
+    priority: 0.6,
+  }))
+  return [...core, ...tools, ...examples]
 }

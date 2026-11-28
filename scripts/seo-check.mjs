@@ -44,7 +44,7 @@ function auditPublic(path, html) {
   ok(meta(html, "og:title") === title, where, "og:title missing or different from <title>")
   ok(meta(html, "og:description") === desc, where, "og:description missing or different")
   ok((meta(html, "og:url") ?? "").replace(/\/$/, "") === expected, where, `og:url is ${meta(html, "og:url")}`)
-  ok(meta(html, "og:type") === "website", where, "og:type")
+  ok(["website", "article"].includes(meta(html, "og:type")), where, "og:type")
   ok(/^https?:\/\/.+/.test(meta(html, "og:image") ?? ""), where, "og:image missing or not absolute")
   ok(meta(html, "og:image:width") === "1200" || !!meta(html, "og:image"), where, "og:image dims")
   ok(meta(html, "twitter:card") === "summary_large_image", where, "twitter:card")
@@ -89,7 +89,7 @@ ok(locs.length >= 10, "/sitemap.xml", `only ${locs.length} URLs`)
 ok(new Set(locs).size === locs.length, "/sitemap.xml", "duplicate URLs")
 ok(locs.every((l) => l.startsWith(SITE)), "/sitemap.xml", "a URL is not on the site origin")
 const paths = locs.map((l) => new URL(l).pathname)
-const PRIVATE = ["/dashboard", "/devmode", "/profile", "/editor", "/ide", "/admin", "/sign-in", "/sign-up", "/auth", "/api"]
+const PRIVATE = ["/dashboard", "/devmode", "/profile", "/editor", "/ide", "/admin", "/sign-in", "/sign-up", "/auth", "/invite", "/s", "/api"]
 ok(!paths.some((p) => PRIVATE.some((x) => p === x || p.startsWith(x + "/"))), "/sitemap.xml", "contains a private path")
 
 // ── robots ─────────────────────────────────────────────────────────────────
@@ -136,7 +136,7 @@ ok(nf.res.status === 404, "/tools/does-not-exist", `status ${nf.res.status}`)
 
 // ── private and API routes ─────────────────────────────────────────────────
 const noindexHeader = (r) => /noindex/i.test(r.headers.get("x-robots-tag") ?? "")
-for (const p of ["/dashboard", "/devmode", "/profile", "/editor", "/ide", "/admin/payments"]) {
+for (const p of ["/dashboard", "/devmode", "/profile", "/editor", "/ide", "/invite", "/admin/payments"]) {
   const { res, text } = await get(p)
   const locked = res.status >= 300 && res.status < 500 // redirected to sign-in or protected
   ok(noindexHeader(res) || /noindex/i.test(meta(text, "robots") ?? ""), p, `no noindex signal (status ${res.status})`)
@@ -147,7 +147,22 @@ for (const p of ["/sign-in", "/sign-up"]) {
   ok(res.status === 200, p, `status ${res.status}`)
   ok(/noindex/i.test(meta(text, "robots") ?? "") && noindexHeader(res), p, "sign-in/up must be noindex in meta and header")
 }
-for (const p of ["/api/devmode/debug", "/api/devmode/payment/status"]) {
+// Shared results: an unknown token is a 404 that is noindexed, never cached, and sends no Referer.
+{
+  const { res } = await get("/s/" + "A".repeat(32))
+  ok(res.status === 404, "/s/<unknown>", `status ${res.status}`)
+  ok(noindexHeader(res), "/s/<unknown>", "lacks X-Robots-Tag noindex")
+  ok(/no-referrer/i.test(res.headers.get("referrer-policy") ?? ""), "/s/<unknown>", "lacks Referrer-Policy: no-referrer")
+}
+// Community: every example is listed, linked from the hub and public.
+{
+  const com = paths.filter((p) => /^\/community\/[^/]+$/.test(p))
+  ok(com.length >= 6, "/community", `expected at least 6 examples in the sitemap, found ${com.length}`)
+  const hub = (await get("/community")).text
+  ok(com.every((c) => hub.includes(`href="${c}"`)), "/community", "hub does not link every example")
+  ok(/not user submissions/i.test(hub), "/community", "missing the hand-written / not-user-data disclosure")
+}
+for (const p of ["/api/devmode/debug", "/api/devmode/payment/status", "/api/growth/share", "/api/growth/referral"]) {
   const { res } = await get(p)
   ok(noindexHeader(res), p, "API response lacks X-Robots-Tag noindex")
 }

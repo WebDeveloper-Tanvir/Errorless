@@ -16,6 +16,6 @@ export function absoluteUrl(path: string): string {
 }
 
 /** Paths that must never be indexed: private, per-user or transactional. */
-export const NOINDEX_PATHS = ["/dashboard", "/devmode", "/profile", "/editor", "/ide", "/admin", "/sign-in", "/sign-up", "/auth", "/login", "/signup", "/sso-callback", "/quiz", "/learn"] as const
+export const NOINDEX_PATHS = ["/dashboard", "/devmode", "/profile", "/editor", "/ide", "/admin", "/sign-in", "/sign-up", "/auth", "/login", "/signup", "/sso-callback", "/invite", "/s", "/quiz", "/learn"] as const
 /** Paths crawlers should not even fetch (APIs and admin). */
 export const DISALLOW_PATHS = ["/api/", "/admin/"] as const

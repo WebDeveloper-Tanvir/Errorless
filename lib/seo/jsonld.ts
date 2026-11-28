@@ -108,3 +108,23 @@ export function itemListLd(name: string, items: { name: string; path: string }[]
     itemListElement: items.map((it, i) => ({ "@type": "ListItem", position: i + 1, name: it.name, url: absoluteUrl(it.path) })),
   }
 }
+
+/** Educational example page. Authored by the Errorless team; no ratings, no user data. */
+export function showcaseLd(a: { title: string; description: string; path: string; language: string; updated: string }): Json {
+  const url = absoluteUrl(a.path)
+  return {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "@id": `${url}#article`,
+    url,
+    headline: a.title,
+    description: a.description,
+    inLanguage: "en",
+    dateModified: a.updated,
+    proficiencyLevel: "Beginner",
+    about: { "@type": "Thing", name: `${a.language} debugging` },
+    author: { "@type": "Organization", name: "Errorless" },
+    publisher: { "@id": `${SITE_URL}/#organization` },
+    isPartOf: { "@id": `${SITE_URL}/#website` },
+  }
+}

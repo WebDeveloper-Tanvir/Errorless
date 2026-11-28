@@ -18,6 +18,9 @@ const isPublicRoute = createRouteMatcher([
   "/docs(.*)",
   "/demo(.*)",
   "/tools(.*)",              // public SEO tool pages
+  "/community(.*)",          // hand-written public examples
+  "/s/(.*)",                 // shared results: access is the unguessable token
+  "/api/growth/feedback",    // guest helpful / not helpful
   "/sitemap.xml",            // crawlers must reach these without a session
   "/robots.txt",
   "/opengraph-image(.*)",

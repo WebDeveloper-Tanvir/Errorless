@@ -40,6 +40,7 @@ export function useDebugSession() {
     abortRef.current = ac
     lastRef.current = req
     setState({ ...INITIAL, phase: "running" })
+    track("debug_request", { language: req.language, framework: req.framework, has_code: req.code.trim().length > 0 })
 
     const fail = (error: SessionError) => setState((s) => ({ ...s, phase: "error", error, partial: null }))
 
@@ -55,7 +56,7 @@ export function useDebugSession() {
         const d = await res.json().catch(() => ({}))
         const message =
           res.status === 401 ? "Please sign in again to continue."
-          : res.status === 402 ? "A Dev Mode plan is required for AI debugging."
+          : res.status === 402 ? "AI debugging needs a Dev Mode plan or an invite credit."
           : d.error || "The request failed. Please retry."
         return fail({ message, code: d.code || `http_${res.status}`, retryable: d.code !== "ai_not_configured" && (res.status >= 500 || res.status === 429), upgrade: !!d.upgrade })
       }
@@ -87,6 +88,8 @@ export function useDebugSession() {
           else if (ev.type === "error") { finished = true; track("debug_error", { code: ev.code, retryable: ev.retryable }); fail({ message: ev.message, code: ev.code, retryable: ev.retryable }) }
         }
       }
+      // The server has settled credits (used, or refunded after a failure) by the time the stream closes.
+      window.dispatchEvent(new Event("errorless:credits-changed"))
       if (!finished) fail({ message: "The connection closed before the analysis finished. Please retry.", code: "interrupted", retryable: true })
     } catch (e) {
       if ((e as Error)?.name === "AbortError") return

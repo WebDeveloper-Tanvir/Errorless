@@ -111,6 +111,10 @@ export default function DevModePage() {
   const [request, setRequest] = useState<{ plan: "basic" | "premium"; status: "pending" | "rejected" } | null>(null)
   const [statusLoaded, setStatusLoaded] = useState(false)
   const planRef = useRef<Plan>("none")
+  // Free accounts with invite credits can use the Debug tab. Sticky for the visit so the page
+  // does not flip to the paywall (and hide a result) when the last credit is used.
+  const [credits, setCredits] = useState(0)
+  const [creditMode, setCreditMode] = useState(false)
   const [upgrading, setUpgrading] = useState(false)
   const [selected, setSelected] = useState<"basic" | "premium" | null>(null)
   const [toastMsg, setToastMsg] = useState("")
@@ -156,6 +160,8 @@ export default function DevModePage() {
         }
         planRef.current = d.plan
         setPlan(d.plan)
+        setCredits(typeof d.credits === "number" ? d.credits : 0)
+        if (d.plan === "none" && d.credits > 0) setCreditMode(true)
         setRequest(d.request)
         if (d.plan !== "none") { setUpgrading(false); setSelected(null) }
       }
@@ -163,6 +169,12 @@ export default function DevModePage() {
     setStatusLoaded(true)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // The debug workspace fires this when an analysis finishes, so the credit balance stays current.
+  useEffect(() => {
+    window.addEventListener("errorless:credits-changed", refreshStatus)
+    return () => window.removeEventListener("errorless:credits-changed", refreshStatus)
+  }, [refreshStatus])
 
   useEffect(() => {
     if (!isLoaded) return
@@ -233,7 +245,7 @@ export default function DevModePage() {
   }
 
   const isPremium = plan === "premium"
-  const paywall = plan === "none" || upgrading
+  const paywall = (plan === "none" && !creditMode) || upgrading
   const upgrade = () => { setSelected(null); setUpgrading(true) }
 
   const toast = toastMsg ? (
@@ -340,7 +352,11 @@ export default function DevModePage() {
               {plan === "basic" ? (
                 <button type="button" onClick={() => setUpgrading(false)} className="text-brand underline-offset-4 hover:underline">Back to Dev Mode</button>
               ) : (
-                <Link href="/ide" className="text-brand underline-offset-4 hover:underline">Continue with the free IDE</Link>
+                <>
+                  <Link href="/ide" className="text-brand underline-offset-4 hover:underline">Continue with the free IDE</Link>
+                  <span className="mx-2 text-muted-foreground" aria-hidden>·</span>
+                  <Link href="/invite" className="text-brand underline-offset-4 hover:underline">Earn free AI analyses by inviting a developer</Link>
+                </>
               )}
             </p>
           </div>
@@ -353,8 +369,8 @@ export default function DevModePage() {
   // ─── WORKSPACE ──────────────────────────────────────────────────────────────
   const TABS: { id: Tab; label: string; icon: LucideIcon; locked: boolean }[] = [
     { id: "debug", label: "Debug", icon: ScanSearch, locked: false },
-    { id: "generate", label: "Generate", icon: Sparkles, locked: false },
-    { id: "analyze", label: "Analyze", icon: ScanSearch, locked: false },
+    { id: "generate", label: "Generate", icon: Sparkles, locked: plan === "none" },
+    { id: "analyze", label: "Analyze", icon: ScanSearch, locked: plan === "none" },
     { id: "optimize", label: "Optimize", icon: RefreshCw, locked: !isPremium },
   ]
   const CARDS: [string, string, LucideIcon][] = [
@@ -380,16 +396,21 @@ export default function DevModePage() {
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
         <p className="flex items-center gap-2 text-sm text-muted-foreground">
           <span className="size-2 animate-pulse-node rounded-full bg-success" aria-hidden />
-          Dev Mode · <span className="font-medium capitalize text-foreground">{plan}</span>
+          Dev Mode · <span className="font-medium capitalize text-foreground">{plan === "none" ? "free" : plan}</span>
+          {plan === "none" && <span>· {credits} AI {credits === 1 ? "credit" : "credits"} left</span>}
         </p>
-        {plan === "basic" && <Button size="sm" variant="gradient" onClick={upgrade}>Upgrade to Premium</Button>}
+        <div className="flex items-center gap-2">
+          <Button asChild size="sm" variant="outline"><Link href="/invite">Invite &amp; sharing</Link></Button>
+          {plan === "none" && <Button size="sm" variant="gradient" onClick={upgrade}>See plans</Button>}
+          {plan === "basic" && <Button size="sm" variant="gradient" onClick={upgrade}>Upgrade to Premium</Button>}
+        </div>
       </div>
 
       <div className="mx-auto max-w-7xl px-4 pb-4 sm:px-6">
         <div role="tablist" aria-label="Mode" className="grid grid-cols-4 gap-1 rounded-xl border border-border bg-card p-1">
           {TABS.map(({ id, label: l, icon: Icon, locked }) => (
             <button key={id} role="tab" aria-selected={tab === id} aria-disabled={locked} onClick={() => !locked && setTab(id)}
-              title={locked ? "Optimize is a Premium feature" : undefined}
+              title={locked ? (plan === "none" ? "Needs a Dev Mode plan" : "Optimize is a Premium feature") : undefined}
               className={cn("flex flex-col items-center gap-1 rounded-lg px-2 py-2 text-xs font-medium transition-colors",
                 tab === id ? "bg-surface-elevated text-foreground ring-1 ring-border" : "text-muted-foreground hover:text-foreground",
                 locked && "cursor-not-allowed opacity-50 hover:text-muted-foreground")}>

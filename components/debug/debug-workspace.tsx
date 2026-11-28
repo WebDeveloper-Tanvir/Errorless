@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { AlertTriangle, ClipboardPaste, Eraser, FileUp, FlaskConical, Keyboard, Loader2, RefreshCw, ShieldCheck, Sparkles, Square } from "lucide-react"
+import { AlertTriangle, ClipboardPaste, Eraser, FileUp, FlaskConical, HelpCircle, Keyboard, Loader2, RefreshCw, ShieldCheck, Sparkles, Square } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { LIMITS } from "@/lib/debug/types"
 import { redactSecrets } from "@/lib/debug/redact"
@@ -11,6 +11,7 @@ import { CodeInput } from "./code-input"
 import { EXAMPLES, EXT_LANGUAGE, FRAMEWORKS, LANGUAGES } from "./constants"
 import { ResultsPanel } from "./results-panel"
 import { ShortcutsDialog } from "./shortcuts-dialog"
+import { Onboarding, ONBOARDED_KEY } from "@/components/growth/onboarding"
 import { useDebugSession } from "./use-debug-session"
 
 const MAX_FILE_BYTES = 200_000
@@ -26,10 +27,16 @@ export function DebugWorkspace() {
   const [framework, setFramework] = useState<string>(FRAMEWORKS[0])
   const [notice, setNotice] = useState<string | null>(null)
   const [showKeys, setShowKeys] = useState(false)
+  const [showGuide, setShowGuide] = useState(false)
   const [mobileView, setMobileView] = useState<"input" | "results">("input")
   const errorFileRef = useRef<HTMLInputElement>(null)
   const codeFileRef = useRef<HTMLInputElement>(null)
   const submittedCode = useRef("")
+
+  // First visit: show the short guide once. It can be reopened from the toolbar.
+  useEffect(() => {
+    try { if (!localStorage.getItem(ONBOARDED_KEY)) setShowGuide(true) } catch { /* storage blocked: skip */ }
+  }, [])
 
   // Hand-off from the public tool pages: text the visitor already pasted there.
   useEffect(() => {
@@ -102,7 +109,7 @@ export function DebugWorkspace() {
 
   const onKeyDown = (e: KeyboardEvent) => {
     const mod = e.ctrlKey || e.metaKey
-    if (showKeys) return
+    if (showKeys || showGuide) return
     if (mod && e.key === "Enter") { e.preventDefault(); e.stopPropagation(); analyze() }
     else if (e.key === "Escape" && running) { e.preventDefault(); cancel() }
     else if (e.altKey && e.key.toLowerCase() === "v") { e.preventDefault(); void pasteError() }
@@ -150,6 +157,9 @@ export function DebugWorkspace() {
               {FRAMEWORKS.map((f) => <option key={f}>{f}</option>)}
             </select>
             <div className="ml-auto flex gap-1.5">
+              <Button type="button" variant="ghost" size="sm" onClick={() => setShowGuide(true)} aria-label="How it works">
+                <HelpCircle className="h-4 w-4" aria-hidden />
+              </Button>
               <Button type="button" variant="ghost" size="sm" onClick={() => setShowKeys(true)} aria-label="Keyboard shortcuts">
                 <Keyboard className="h-4 w-4" aria-hidden />
               </Button>
@@ -244,6 +254,7 @@ export function DebugWorkspace() {
               <div className="mt-3 flex flex-wrap gap-2">
                 {state.error.retryable && <Button type="button" size="sm" variant="outline" onClick={retry}><RefreshCw className="h-4 w-4" aria-hidden />Retry</Button>}
                 {state.error.upgrade && <Button asChild size="sm" variant="gradient"><a href="/pricing">See plans</a></Button>}
+                {state.error.upgrade && <Button asChild size="sm" variant="outline"><a href="/invite">Earn credits by inviting</a></Button>}
               </div>
             </div>
           )}
@@ -263,6 +274,7 @@ export function DebugWorkspace() {
         </div>
       </div>
       <ShortcutsDialog open={showKeys} onOpenChange={setShowKeys} />
+      <Onboarding open={showGuide} onClose={() => setShowGuide(false)} />
     </div>
   )
 }

@@ -19,6 +19,7 @@ const COLUMNS = [
     title: "Debugging guides",
     links: [
       { label: "All guides", href: "/tools" },
+      { label: "Debugging examples", href: "/community" },
       ...TOOL_PAGES.map((t) => ({ label: t.name, href: toolPath(t.slug) })),
     ],
   },

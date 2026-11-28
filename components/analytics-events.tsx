@@ -5,7 +5,7 @@ import Script from "next/script"
 import { usePathname } from "next/navigation"
 import { useUser } from "@clerk/nextjs"
 import { track } from "@/lib/analytics"
-import { acquisitionSource, classifyLandingPath } from "@/lib/seo/events"
+import { recordVisit, acquisitionSource, classifyLandingPath } from "@/lib/seo/events"
 
 const GA_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID
 const SIGNUP_FLAG = "errorless:sign_up_tracked"
@@ -28,6 +28,18 @@ export function AnalyticsEvents() {
     const src = acquisitionSource(window.location.search, document.referrer, window.location.hostname)
     track("landing_view", { ...page, ...src })
   }, [pathname])
+
+  // Repeat use: one event per returning calendar day, only a day count, no identifier.
+  useEffect(() => {
+    try {
+      const raw = JSON.parse(window.localStorage.getItem("errorless:visit-days") ?? "[]")
+      const days = Array.isArray(raw) ? raw.filter((d): d is string => typeof d === "string") : []
+      const v = recordVisit(days, new Date().toISOString().slice(0, 10))
+      if (!v.changed) return
+      window.localStorage.setItem("errorless:visit-days", JSON.stringify(v.days))
+      if (v.returning) track("returning_user", { visit_days: v.days.length })
+    } catch { /* storage blocked: skip */ }
+  }, [])
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
